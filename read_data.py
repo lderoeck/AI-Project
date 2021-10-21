@@ -1,4 +1,4 @@
-
+#%%
 import pandas as pd
 from pandas.core.frame import DataFrame
 from tqdm import tqdm
@@ -6,8 +6,8 @@ import ast
 import numpy as np
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.neighbors import NearestNeighbors
+from sklearn.decomposition import TruncatedSVD
 import scipy
-
 
 #read file line-by-line and parse json, returns dataframe
 def parse_json(filename_python_json:str, read_max:int=-1) -> pd.DataFrame:
@@ -48,29 +48,75 @@ def get_item_features():
     items = items.join(pd.DataFrame.sparse.from_spmatrix(mlb.fit_transform(items.pop('tags')), index=items.index, columns=['tag_' + c for c in mlb.classes_]))
     return items
 
-items = get_item_features()
-df = parse_json('./data/australian_user_reviews.json')
-df = df.explode('reviews', ignore_index=True)
+def generate_recommendations():
+    items = get_item_features()
+    df = parse_json('./data/australian_user_reviews.json')
+    df = df.explode('reviews', ignore_index=True)
 
-df = pd.concat([df.drop(['reviews', 'user_url'], axis=1), pd.json_normalize(df.reviews)], axis=1).drop(['funny', 'helpful', 'posted', 'last_edited', 'review'], axis=1)
-df = df.groupby('user_id')['item_id'].apply(list).reset_index(name='item_id')
-print(df)
-X = scipy.sparse.csr_matrix(items.drop(['id'], axis=1).values)
-nbrs = NearestNeighbors(n_neighbors=10).fit(X)
+    df = pd.concat([df.drop(['reviews', 'user_url'], axis=1), pd.json_normalize(df.reviews)], axis=1).drop(['funny', 'helpful', 'posted', 'last_edited', 'review'], axis=1)
+    df = df.groupby('user_id')['item_id'].apply(list).reset_index(name='item_id')
+    X = scipy.sparse.csr_matrix(items.drop(['id'], axis=1).values)
+    svd = TruncatedSVD(n_components=50)
+    Y = svd.fit_transform(X)
+    items = pd.concat([items['id'], pd.DataFrame(Y)], axis=1)
+    
+    nbrs = NearestNeighbors(n_neighbors=10, algorithm='ball_tree').fit(Y)
+    
+    recommendation_list = []
+    for index, row in tqdm(df.iterrows()):
+        reviewed_items = items[items['id'].isin(row['item_id'])]
+        if reviewed_items.empty:
+            recommendation_list.append([])
+            continue
+        user_vector = reviewed_items.drop(['id'], axis=1).mean()
+        nns = nbrs.kneighbors([user_vector.to_numpy()], 10, return_distance=False)[0]
+        recommendations = [items.loc[item]['id'] for item in nns]
+        for recommendation in recommendations:
+            if isinstance(recommendation, list):
+                print('BRUH')
+                assert False
+        recommendation_list.append(recommendations)
 
-# recommendation_list = []
-# for index, row in tqdm(df.iterrows()):
-#     reviewed_items = items[items['id'].isin(row['item_id'])]
-#     if reviewed_items.empty:
-#         recommendation_list.append([])
-#         continue
-#     user_vector = reviewed_items.drop(['id'], axis=1).mean()
-#     nns = nbrs.kneighbors(scipy.sparse.csr_matrix(user_vector.values), 10, return_distance=False)[0]
-#     recommendations = [items.loc[item]['id'] for item in nns]
-#     recommendation_list.append(recommendations)
+    df['recommendations'] = recommendation_list
+    return df
 
-# df['recommendations'] = recommendation_list
+def generate_gt():
+    gt = parse_json("./data/australian_users_items.json")
+    gt['items'] = gt['items'].apply(lambda items: [item['item_id'] for item in items])
+    gt = gt.drop(['user_url'], axis=1)
+    gt.to_parquet('./data/ground_truth.parquet')
 
-gt = parse_json("./data/australian_users_items.json")
-gt = pd.concat([gt.drop(['items', 'user_url'], axis=1), pd.json_normalize(gt.items)], axis=1)#.drop(['funny', 'helpful', 'posted', 'last_edited', 'review'], axis=1)
-print(gt.head())
+def evaluate(metrics, recommendations:pd.DataFrame):
+    assert all([metric in ['recall@k'] for metric in metrics])
+    gt = pd.read_parquet('./data/ground_truth.parquet')
+    # gt['items'] = gt['items'].apply(ast.literal_eval)
+    results = []
+    for metric in metrics:
+        if metric == 'recall@k':
+            sum_recall = 0
+            count = 0
+            for index, row in tqdm(recommendations.iterrows()):
+                user_gt = gt[gt['user_id'] == row['user_id']]
+                user_recommendations = recommendations[recommendations['user_id'] == row['user_id']]
+                if not (user_gt.empty or user_recommendations.empty):
+                    items_gt = set(user_gt['items'].tolist()[0])
+                    items_recommended = set(user_recommendations['recommendations'].tolist()[0])
+                    if len(items_recommended) == 0:
+                        continue
+                    accurate_recs = len(items_gt.intersection(items_recommended))
+                    print(items_recommended)
+                    sum_recall += accurate_recs/len(items_recommended)
+                    count += 1
+            results.append(sum_recall/count)
+    return results
+
+#%%
+recommendations = generate_recommendations()
+print(recommendations)
+
+#%%
+print(evaluate(['recall@k'], recommendations))
+
+# %%
+generate_gt()
+# %%
