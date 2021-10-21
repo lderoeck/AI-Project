@@ -58,15 +58,19 @@ print(df)
 X = scipy.sparse.csr_matrix(items.drop(['id'], axis=1).values)
 nbrs = NearestNeighbors(n_neighbors=10).fit(X)
 
-recommendation_list = []
-for index, row in tqdm(df.iterrows()):
-    reviewed_items = items[items['id'].isin(row['item_id'])]
-    if reviewed_items.empty:
-        recommendation_list.append([])
-        continue
-    user_vector = reviewed_items.drop(['id'], axis=1).mean()
-    nns = nbrs.kneighbors(scipy.sparse.csr_matrix(user_vector.values), 10, return_distance=False)[0]
-    recommendations = [items.loc[item]['id'] for item in nns]
-    recommendation_list.append(recommendations)
+# recommendation_list = []
+# for index, row in tqdm(df.iterrows()):
+#     reviewed_items = items[items['id'].isin(row['item_id'])]
+#     if reviewed_items.empty:
+#         recommendation_list.append([])
+#         continue
+#     user_vector = reviewed_items.drop(['id'], axis=1).mean()
+#     nns = nbrs.kneighbors(scipy.sparse.csr_matrix(user_vector.values), 10, return_distance=False)[0]
+#     recommendations = [items.loc[item]['id'] for item in nns]
+#     recommendation_list.append(recommendations)
 
-df['recommendations'] = recommendation_list
+# df['recommendations'] = recommendation_list
+
+gt = parse_json("./data/australian_users_items.json")
+gt = pd.concat([gt.drop(['items', 'user_url'], axis=1), pd.json_normalize(gt.items)], axis=1)#.drop(['funny', 'helpful', 'posted', 'last_edited', 'review'], axis=1)
+print(gt.head())
