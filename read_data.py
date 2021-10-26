@@ -88,26 +88,17 @@ def generate_gt():
 
 def evaluate(metrics, recommendations:pd.DataFrame):
     assert all([metric in ['recall@k'] for metric in metrics])
+    eval = recommendations.drop(recommendations[~recommendations['recommendations'].astype(bool)].index)
     gt = pd.read_parquet('./data/ground_truth.parquet')
+    eval = eval.merge(gt, on=['user_id'])
     # gt['items'] = gt['items'].apply(ast.literal_eval)
     results = []
     for metric in metrics:
         if metric == 'recall@k':
-            sum_recall = 0
-            count = 0
-            for index, row in tqdm(recommendations.iterrows()):
-                user_gt = gt[gt['user_id'] == row['user_id']]
-                user_recommendations = recommendations[recommendations['user_id'] == row['user_id']]
-                if not (user_gt.empty or user_recommendations.empty):
-                    items_gt = set(user_gt['items'].tolist()[0])
-                    items_recommended = set(user_recommendations['recommendations'].tolist()[0])
-                    if len(items_recommended) == 0:
-                        continue
-                    accurate_recs = len(items_gt.intersection(items_recommended))
-                    print(items_recommended)
-                    sum_recall += accurate_recs/len(items_recommended)
-                    count += 1
-            results.append(sum_recall/count)
+            eval['recommendations'] = eval['recommendations'].apply(set)
+            eval['items'] = eval['items'].apply(set)
+            eval[metric] = eval.apply(lambda row: len(row['recommendations'].intersection(row['items']))/len(row['recommendations']), axis=1)
+            results.append(eval[metric].mean())
     return results
 
 #%%
