@@ -1,33 +1,10 @@
-#%%
 import pandas as pd
-from pandas.core.frame import DataFrame
 from tqdm import tqdm
-import ast
-import numpy as np
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.neighbors import NearestNeighbors
 from sklearn.decomposition import TruncatedSVD
 import scipy
-
-#read file line-by-line and parse json, returns dataframe
-def parse_json(filename_python_json:str, read_max:int=-1) -> pd.DataFrame:
-    with open(filename_python_json, "r", encoding="utf-8") as f:
-        #parse json
-        parse_data = []
-        for line in tqdm(f): #tqdm is for showing progress bar, always good when processing large amounts of data
-            # line = line.decode('utf-8')
-            # line = line.replace('true','True') #difference json/python
-            # line = line.replace('false','False')
-            parsed_result = ast.literal_eval(line) #load python nested datastructure
-            parse_data.append(parsed_result)
-            if read_max !=-1 and len(parse_data) > read_max:
-                print(f'Break reading after {read_max} records')
-                break
-        print(f"Reading {len(parse_data)} rows.")
-
-        #create dataframe
-        df= pd.DataFrame.from_dict(parse_data)
-        return df
+from recommender import parse_json
     
 # df = parse_json('./data/steam_reviews.json')
 # print(df.head())
@@ -79,35 +56,3 @@ def generate_recommendations():
 
     df['recommendations'] = recommendation_list
     return df
-
-def generate_gt():
-    gt = parse_json("./data/australian_users_items.json")
-    gt['items'] = gt['items'].apply(lambda items: [item['item_id'] for item in items])
-    gt = gt.drop(['user_url'], axis=1)
-    gt.to_parquet('./data/ground_truth.parquet')
-
-def evaluate(metrics, recommendations:pd.DataFrame):
-    assert all([metric in ['recall@k'] for metric in metrics])
-    eval = recommendations.drop(recommendations[~recommendations['recommendations'].astype(bool)].index)
-    gt = pd.read_parquet('./data/ground_truth.parquet')
-    eval = eval.merge(gt, on=['user_id'])
-    # gt['items'] = gt['items'].apply(ast.literal_eval)
-    results = []
-    for metric in metrics:
-        if metric == 'recall@k':
-            eval['recommendations'] = eval['recommendations'].apply(set)
-            eval['items'] = eval['items'].apply(set)
-            eval[metric] = eval.apply(lambda row: len(row['recommendations'].intersection(row['items']))/len(row['recommendations']), axis=1)
-            results.append(eval[metric].mean())
-    return results
-
-#%%
-recommendations = generate_recommendations()
-print(recommendations)
-
-#%%
-print(evaluate(['recall@k'], recommendations))
-
-# %%
-generate_gt()
-# %%
