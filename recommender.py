@@ -7,6 +7,8 @@ from pandas import DataFrame
 from sklearn.decomposition import TruncatedSVD
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.neighbors import BallTree
+from sklearn.neighbors import KDTree
 from tqdm import tqdm
 
 
@@ -37,15 +39,21 @@ def parse_json(filename_python_json: str, read_max: int = -1) -> DataFrame:
         df = DataFrame.from_dict(parse_data)
         return df
 
-
+#TODO: use seed for SVD, create proper assertions or use try/catch for sparse/svd/distance metric combinations, 
 class ContentBasedRec(object):
-    def __init__(self, items_path: str, sparse: bool = True, method=NearestNeighbors(n_neighbors=10, algorithm="ball_tree"), dim_red=TruncatedSVD(n_components=50)) -> None:
+    def __init__(self, items_path: str, sparse: bool = True, model=NearestNeighbors, distance_metric='minkowski', dim_red=TruncatedSVD(n_components=50)) -> None:
         super().__init__()
         self.sparse = sparse
-        self.method = method
         self.dim_red = dim_red
         self.items = self._generate_item_features(parse_json(items_path))
         self.recommendations = None
+        
+        algorithm = 'auto'
+        if distance_metric in BallTree.valid_metrics:
+            algorithm = 'ball_tree'
+        elif distance_metric in KDTree.valid_metrics:
+            algorithm = 'kd_tree'
+        self.method = model(n_neighbors=10, algorithm=algorithm, metric=distance_metric)
 
     def _generate_item_features(self, items: DataFrame) -> DataFrame:
         """Generates feature vector of items and appends to returned DataFrame
@@ -82,7 +90,7 @@ class ContentBasedRec(object):
 
         return items
 
-    def generate_recommendations(self, data_path: str) -> None:
+    def generate_recommendations(self, data_path: str, amount=10) -> None:
         """Generate recommendations based on user review data
 
         Args:
@@ -106,6 +114,7 @@ class ContentBasedRec(object):
             X = self.dim_red.fit_transform(X)
         items = pd.concat([items["id"], DataFrame(X)], axis=1)
 
+        self.method.set_params(n_neighbors=amount)
         nbrs = self.method.fit(X)
 
         recommendation_list = []
@@ -116,7 +125,7 @@ class ContentBasedRec(object):
                 continue
             user_vector = reviewed_items.drop(["id"], axis=1).mean()
             nns = nbrs.kneighbors([user_vector.to_numpy()],
-                                  10, return_distance=False)[0]
+                                  amount, return_distance=False)[0]
             recommendations = [items.loc[item]["id"] for item in nns]
             for recommendation in recommendations:
                 assert not isinstance(recommendation, list)
@@ -127,4 +136,6 @@ class ContentBasedRec(object):
 
 
 if __name__ == "__main__":
-    test = ContentBasedRec("./data/steam_games.json", sparse=False)
+    rec = ContentBasedRec("./data/steam_games.json", sparse=False)
+    rec.generate_recommendations("./data/australian_user_reviews.json")
+    print(rec.recommendations)
