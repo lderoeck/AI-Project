@@ -10,6 +10,7 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.neighbors import BallTree
 from sklearn.neighbors import KDTree
 from tqdm import tqdm
+from sklearn.feature_extraction.text import TfidfTransformer
 
 
 def parse_json(filename_python_json: str, read_max: int = -1) -> DataFrame:
@@ -41,12 +42,21 @@ def parse_json(filename_python_json: str, read_max: int = -1) -> DataFrame:
 
 #TODO: use seed for SVD, create proper assertions or use try/catch for sparse/svd/distance metric combinations, 
 class ContentBasedRec(object):
-    def __init__(self, items_path: str, sparse: bool = True, model=NearestNeighbors, distance_metric='minkowski', dim_red=TruncatedSVD(n_components=50)) -> None:
+    def __init__(self, items_path: str, sparse: bool = True, model=NearestNeighbors, distance_metric='minkowski', dim_red=TruncatedSVD(n_components=50), tfidf='default') -> None:
         super().__init__()
         self.sparse = sparse
         self.dim_red = dim_red
         self.items = self._generate_item_features(parse_json(items_path))
         self.recommendations = None
+        self.tfidf = None
+        if tfidf == 'default':
+            self.tfidf = TfidfTransformer(smooth_idf=False, sublinear_tf=False)
+        if tfidf == 'smooth':
+            self.tfidf = TfidfTransformer(smooth_idf=True, sublinear_tf=False)
+        if tfidf == 'sublinear':
+            self.tfidf = TfidfTransformer(smooth_idf=False, sublinear_tf=True)
+        if tfidf == 'smooth_sublinear':
+            self.tfidf = TfidfTransformer(smooth_idf=True, sublinear_tf=True)
         
         algorithm = 'auto'
         if distance_metric in BallTree.valid_metrics:
@@ -109,6 +119,9 @@ class ContentBasedRec(object):
             X = scipy.sparse.csr_matrix(items.drop(["id"], axis=1).values)
         else:
             X = np.matrix(items.drop(["id"], axis=1).values)
+
+        if self.tfidf:
+            X = self.tfidf.fit_transform(X)
 
         if self.dim_red:
             X = self.dim_red.fit_transform(X)
