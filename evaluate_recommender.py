@@ -21,13 +21,13 @@ def evaluate(recommendations:pd.DataFrame):
     eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
     eval['recall@k'] = eval.apply(lambda row: len(row['recommendations'].intersection(row['items']))/len(row['items']), axis=1)
     eval['nDCG@k'] = eval.apply(lambda row: np.sum([(np.power(2, rec in row['items'])-1)/(np.log2(i+1)) for i, rec in enumerate(row['recommendations'])]), axis=1)
-    eval['nDCG@k'] = eval.apply(lambda row: row['nDCG@k']/np.sum([1/(np.log2(i+1)) for i in len(row['recommendations'])]), axis=1)
+    eval['nDCG@k'] = eval.apply(lambda row: row['nDCG@k']/np.sum([1/(np.log2(i+1)) for i in range(len(row['recommendations']))]), axis=1)
     results_dict['recall@k'] = eval['recall@k'].mean()
-    results_dict['recall@k'] = eval['nDCG@k'].mean()
+    results_dict['nDCG@k'] = eval['nDCG@k'].mean()
     return results_dict
 
 if __name__ == '__main__':
-    metrics = ['cosine']
+    metrics = ['minkowski', 'cosine']
     tfidf = [None, 'default', 'smooth', 'sublinear', 'smooth_sublinear']
     combinations = list(itertools.product(metrics, tfidf))
     for metric, tfidf in combinations:
