@@ -40,9 +40,9 @@ def parse_json(filename_python_json: str, read_max: int = -1) -> DataFrame:
         df = DataFrame.from_dict(parse_data)
         return df
 
-#TODO: use seed for SVD, create proper assertions or use try/catch for sparse/svd/distance metric combinations, 
+#TODO: use seed for SVD
 class ContentBasedRec(object):
-    def __init__(self, items_path: str, sparse: bool = True, model=NearestNeighbors, distance_metric='minkowski', dim_red=TruncatedSVD(n_components=50), tfidf='default') -> None:
+    def __init__(self, items_path: str, sparse: bool = True, model=NearestNeighbors, distance_metric='minkowski', dim_red=None, tfidf='default') -> None:
         super().__init__()
         self.sparse = sparse
         self.dim_red = dim_red
@@ -125,7 +125,11 @@ class ContentBasedRec(object):
 
         if self.dim_red:
             X = self.dim_red.fit_transform(X)
-        items = pd.concat([items["id"], DataFrame(X)], axis=1)
+            
+        if self.sparse:
+            items = pd.concat([items["id"], DataFrame.sparse.from_spmatrix(X)], axis=1)
+        else:
+            items = pd.concat([items["id"], DataFrame(X)], axis=1)
 
         self.method.set_params(n_neighbors=amount)
         nbrs = self.method.fit(X)
