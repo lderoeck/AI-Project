@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from recommender import parse_json, ContentBasedRec
 import itertools
 
@@ -19,7 +20,10 @@ def evaluate(recommendations:pd.DataFrame):
     eval['items'] = eval['items'].apply(set)
     eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
     eval['recall@k'] = eval.apply(lambda row: len(row['recommendations'].intersection(row['items']))/len(row['items']), axis=1)
+    eval['nDCG@k'] = eval.apply(lambda row: np.sum([(np.power(2, rec in row['items'])-1)/(np.log2(i+1)) for i, rec in enumerate(row['recommendations'])]), axis=1)
+    eval['nDCG@k'] = eval.apply(lambda row: row['nDCG@k']/np.sum([1/(np.log2(i+1)) for i in len(row['recommendations'])]), axis=1)
     results_dict['recall@k'] = eval['recall@k'].mean()
+    results_dict['recall@k'] = eval['nDCG@k'].mean()
     return results_dict
 
 if __name__ == '__main__':

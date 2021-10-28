@@ -118,7 +118,7 @@ class ContentBasedRec(object):
         if self.sparse:
             X = scipy.sparse.csr_matrix(items.drop(["id"], axis=1).values)
         else:
-            X = np.matrix(items.drop(["id"], axis=1).values)
+            X = np.array(items.drop(["id"], axis=1).values)
 
         if self.tfidf:
             X = self.tfidf.fit_transform(X)
