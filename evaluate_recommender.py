@@ -17,7 +17,6 @@ def evaluate(recommendations:pd.DataFrame):
     eval = eval.merge(gt, on=['user_id'])
 
     results_dict = dict()
-    eval['recommendations'] = eval['recommendations'].apply(set)
     eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
     
     # compute nDCG@k
@@ -27,6 +26,7 @@ def evaluate(recommendations:pd.DataFrame):
     
     # compute recall@k
     eval['items'] = eval['items'].apply(set)
+    eval['recommendations'] = eval['recommendations'].apply(set)
     eval['recall@k'] = eval.apply(lambda row: len(row['recommendations'].intersection(row['items']))/len(row['items']), axis=1)
     results_dict['recall@k'] = eval['recall@k'].mean()
     
