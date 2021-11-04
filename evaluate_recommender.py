@@ -4,6 +4,7 @@ from recommender import parse_json, ContentBasedRec
 import itertools
 from multiprocessing import Pool
 import os
+import ast
 
 
 def generate_gt(target: str) -> None:
@@ -18,7 +19,7 @@ def generate_gt(target: str) -> None:
     gt.to_parquet(target)
 
 
-def evaluate(recommendations: pd.DataFrame) -> dict:
+def evaluate(recommendations: pd.DataFrame, filename=None) -> dict:
     """Evaluate the recommendations based on ground truth
 
     Args:
@@ -34,6 +35,11 @@ def evaluate(recommendations: pd.DataFrame) -> dict:
     results_dict = dict()
     # drop all rows with no items (nothing to compare against)
     eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
+    
+    if filename:
+        if not os.path.exists('./evaluation'):
+            os.mkdir('./evaluation/')
+        eval.to_csv('./evaluation/' + filename + '.csv')
 
     # compute nDCG@k
     eval['nDCG@k'] = eval.apply(lambda row: np.sum([(np.power(2, rec in row['items'])-1)/(np.log2(i+2)) for i, rec in enumerate(row['recommendations'])]), axis=1)
@@ -61,19 +67,32 @@ def evaluate_recommender(metric: str, tfidf: str) -> tuple:
     """
     rec = ContentBasedRec("./data/steam_games.json",sparse=True, distance_metric=metric, tfidf=tfidf)
     rec.generate_recommendations("./data/australian_user_reviews.json")
-    return (metric, tfidf, evaluate(rec.recommendations))
+    return (metric, tfidf, evaluate(rec.recommendations, '%s_%s' % (metric, tfidf)))
+
+def map_id_to_name(mapping, filename):
+    recommendations = pd.read_csv('./evaluation/' + filename)
+    recommendations = recommendations[['item_id', 'recommendations', 'items']]
+    for col in recommendations:
+        recommendations[col] = recommendations[col].apply(lambda x: [mapping.get(i, np.nan) for i in ast.literal_eval(x)])
+    recommendations.to_csv('./evaluation/parsed_' + filename)
 
 
 if __name__ == '__main__':
-    gt_file = './data/ground_truth.parquet'
-    from os.path import exists
-    if not exists(gt_file):
-        generate_gt(gt_file)
-    metrics = ['euclidean', 'cosine']
-    tfidf = [None, 'default', 'smooth', 'sublinear', 'smooth_sublinear']
-    combinations = list(itertools.product(metrics, tfidf))
-    with Pool(min(os.cpu_count(), len(combinations))) as pool:
-        results = [pool.apply_async(evaluate_recommender, args=(metric, tfidf)) for metric, tfidf in combinations]
-        output = [p.get() for p in results]
-    for result in output:
-        print(result[0], result[1] + ':', result[2])
+    import glob
+    games = parse_json("./data/steam_games.json")
+    games = games[['id', 'title']]
+    mapping = dict(zip(games.id, games.title))
+    for f in glob.glob('./evaluation/*.csv'):
+        map_id_to_name(mapping, os.path.basename(f))
+    # gt_file = './data/ground_truth.parquet'
+    # from os.path import exists
+    # if not exists(gt_file):
+    #     generate_gt(gt_file)
+    # metrics = ['cosine']
+    # tfidf = [None]
+    # combinations = list(itertools.product(metrics, tfidf))
+    # with Pool(min(os.cpu_count(), len(combinations))) as pool:
+    #     results = [pool.apply_async(evaluate_recommender, args=(metric, tfidf)) for metric, tfidf in combinations]
+    #     output = [p.get() for p in results]
+    # for result in output:
+    #     print(result[0], result[1], '\b:', result[2])
