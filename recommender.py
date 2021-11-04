@@ -81,7 +81,8 @@ class ContentBasedRec(object):
 
         items.drop(list(item_data.difference(
             {"genres", "tags", "id", "specs"})), axis=1, inplace=True)
-        items["id"].dropna(inplace=True)
+        items.dropna(subset=["id"], inplace=True)
+        items = items.reset_index(drop=True)
         # Combine genres, tags and specs into one column
         items["genres"] = items["genres"].fillna("").apply(set)
         items["tags"] = items["tags"].fillna("").apply(set)
@@ -108,6 +109,7 @@ class ContentBasedRec(object):
         """
         items = self.items
         df = parse_json(data_path)
+        df.drop(df[~df["reviews"].astype(bool)].index, inplace=True)
         df = df.explode("reviews", ignore_index=True)
 
         df = pd.concat([df.drop(["reviews", "user_url"], axis=1), pd.json_normalize(
@@ -144,8 +146,6 @@ class ContentBasedRec(object):
             nns = nbrs.kneighbors([user_vector.to_numpy()],
                                   amount, return_distance=False)[0]
             recommendations = [items.loc[item]["id"] for item in nns]
-            for recommendation in recommendations:
-                assert not isinstance(recommendation, list)
             recommendation_list.append(recommendations)
 
         df["recommendations"] = recommendation_list
