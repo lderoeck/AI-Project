@@ -55,7 +55,7 @@ def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None
     return results_dict
 
 
-def evaluate_recommender(metric: str, tfidf: str, qual_eval_folder='./evaluation') -> tuple:
+def evaluate_recommender(metric: str, tfidf: str, use_feedback=False, qual_eval_folder='./evaluation') -> tuple:
     """Wrapper function to allow for easy evaluation of specific metrics and tf-idf methods
 
     Args:
@@ -66,9 +66,9 @@ def evaluate_recommender(metric: str, tfidf: str, qual_eval_folder='./evaluation
     Returns:
         tuple: (metric, tf-idf, evaluation)
     """
-    rec = ContentBasedRec("./data/steam_games.json", sparse=True, distance_metric=metric, tfidf=tfidf)
+    rec = ContentBasedRec("./data/steam_games.json", sparse=True, distance_metric=metric, tfidf=tfidf, use_feedback=use_feedback)
     rec.generate_recommendations("./data/australian_user_reviews.json")
-    return (metric, tfidf, evaluate(rec.recommendations, '%s_%s' % (metric, tfidf), qual_eval_folder + '/source'))
+    return (metric, tfidf, use_feedback, evaluate(rec.recommendations, '%s_%s_%s' % (metric, tfidf, use_feedback), qual_eval_folder + '/source/'))
 
 
 def map_id_to_name(mapping: dict, filename: str) -> None:

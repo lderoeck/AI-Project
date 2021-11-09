@@ -1,4 +1,5 @@
 from ast import literal_eval
+import enum
 
 import numpy as np
 import pandas as pd
@@ -42,13 +43,14 @@ def parse_json(filename_python_json: str, read_max: int = -1) -> DataFrame:
 
 #TODO: use seed for SVD
 class ContentBasedRec(object):
-    def __init__(self, items_path: str, sparse: bool = True, model=NearestNeighbors, distance_metric='minkowski', dim_red=None, tfidf='default') -> None:
+    def __init__(self, items_path: str, sparse: bool = True, model=NearestNeighbors, distance_metric='minkowski', dim_red=None, tfidf='default', use_feedback=True) -> None:
         super().__init__()
         self.sparse = sparse
         self.dim_red = dim_red
         self.items = self._generate_item_features(parse_json(items_path))
         self.recommendations = None
         self.tfidf = None
+        self.use_feedback = use_feedback
         if tfidf == 'default':
             self.tfidf = TfidfTransformer(smooth_idf=False, sublinear_tf=False)
         if tfidf == 'smooth':
@@ -114,8 +116,8 @@ class ContentBasedRec(object):
 
         df = pd.concat([df.drop(["reviews", "user_url"], axis=1), pd.json_normalize(
             df.reviews)], axis=1).drop(["funny", "helpful", "posted", "last_edited", "review"], axis=1)
-        df = df.groupby("user_id")["item_id"].apply(
-            list).reset_index(name="item_id")
+        df = df.groupby("user_id").agg(
+            list).reset_index()
 
         if self.sparse:
             X = scipy.sparse.csr_matrix(items.drop(["id"], axis=1).values)
@@ -137,12 +139,27 @@ class ContentBasedRec(object):
         nbrs = self.method.fit(X)
 
         recommendation_list = []
-        for index, row in tqdm(df.iterrows()):
+        for index, row in tqdm(df.iterrows()):  
             reviewed_items = items[items["id"].isin(row["item_id"])]
+            
             if reviewed_items.empty:
                 recommendation_list.append([])
                 continue
-            user_vector = reviewed_items.drop(["id"], axis=1).mean()
+            
+            user_vector = None
+            if self.use_feedback:
+                positive_ids = [recommend and id for id, recommend in zip(row["item_id"], row["recommend"])]
+                negative_ids = [not recommend and id for id, recommend in zip(row["item_id"], row["recommend"])]
+                
+                positive_items = reviewed_items[reviewed_items["id"].isin(positive_ids)].drop(["id"], axis=1)
+                negative_items = reviewed_items[reviewed_items["id"].isin(negative_ids)].drop(["id"], axis=1)
+                
+                positive_values = positive_items.sum()
+                negative_values = negative_items.sum()
+                
+                user_vector = positive_values.sub(negative_values).div(reviewed_items.shape[0])
+            else:
+                user_vector = reviewed_items.drop(["id"], axis=1).mean()
             nns = nbrs.kneighbors([user_vector.to_numpy()],
                                   amount, return_distance=False)[0]
             recommendations = [items.loc[item]["id"] for item in nns]
