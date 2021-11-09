@@ -13,7 +13,7 @@ The test data that will be used for this recommender is a snapshot of the steam 
 This dataset provides us with items (games), users and user-item interactions in the form of their game library and user reviews of games. These reviews are either positive or negative. 
 
 ## Base Recommender
-[base recommender visualization (source: Content-based recommender systems: State of the art and trends)](./ContentBasedRec.png)
+![base recommender visualization (source: Content-based recommender systems: State of the art and trends)](./ContentBasedRec.png)
 
 We first implement a base recommender based on the content-based recommendation approach, we will later attempt to optimise this recommender for our dataset. 
 
