@@ -1,8 +1,6 @@
 import pandas as pd
 import numpy as np
 from recommender import parse_json, ContentBasedRec
-import itertools
-from multiprocessing import Pool
 import os
 import ast
 
@@ -24,9 +22,11 @@ def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None
 
     Args:
         recommendations (pd.DataFrame): Dataframe consisting of user_id and their respective recommendations
+        filename ([type], optional): filename for qualitative evaluation. Defaults to None.
+        qual_eval_folder ([type], optional): output folder for qualitative evaluation. Defaults to None.
 
     Returns:
-        dict: a dict containing the recall@k and nDCG@k 
+        dict: a dict containing the recall@k and nDCG@k
     """
     eval = recommendations.drop(recommendations[~recommendations['recommendations'].astype(bool)].index)  # drop all recommendations that are empty
     gt = pd.read_parquet('./data/ground_truth.parquet')
@@ -35,7 +35,7 @@ def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None
     results_dict = dict()
     # drop all rows with no items (nothing to compare against)
     eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
-    
+
     if filename and qual_eval_folder:
         if not os.path.exists(qual_eval_folder):
             os.makedirs(qual_eval_folder)
@@ -61,6 +61,7 @@ def evaluate_recommender(metric: str, tfidf: str, qual_eval_folder='./evaluation
     Args:
         metric (str): distance metric to be used
         tfidf (str): tf-idf method to be used
+        qual_eval_folder (str, optional): output folder for qualitative evaluation. Defaults to './evaluation'.
 
     Returns:
         tuple: (metric, tf-idf, evaluation)
@@ -69,30 +70,21 @@ def evaluate_recommender(metric: str, tfidf: str, qual_eval_folder='./evaluation
     rec.generate_recommendations("./data/australian_user_reviews.json")
     return (metric, tfidf, evaluate(rec.recommendations, '%s_%s' % (metric, tfidf), qual_eval_folder + '/source'))
 
-def map_id_to_name(mapping, filename):
+
+def map_id_to_name(mapping: dict, filename: str) -> None:
+    """Replaces ids in input file to application names
+
+    Args:
+        mapping (dict): a map from id -> application name
+        filename (str): input file name
+    """
     recommendations = pd.read_csv(filename)
     recommendations = recommendations[['item_id', 'recommendations', 'items']]
     for col in recommendations:
-        recommendations[col] = recommendations[col].apply(lambda x: [mapping.get(i, 'unknown game') for i in ast.literal_eval(x)])
+        recommendations[col] = recommendations[col].apply(
+            lambda x: [mapping.get(i, 'unknown game') for i in ast.literal_eval(x)])
     recommendations.to_csv(filename)
 
 
 if __name__ == '__main__':
-    import glob
-    games = parse_json("./data/steam_games.json")
-    games = games[['id', 'title']]
-    mapping = dict(zip(games.id, games.title))
-    for f in glob.glob('./evaluation/*.csv'):
-        map_id_to_name(mapping, os.path.basename(f))
-    # gt_file = './data/ground_truth.parquet'
-    # from os.path import exists
-    # if not exists(gt_file):
-    #     generate_gt(gt_file)
-    # metrics = ['cosine']
-    # tfidf = [None]
-    # combinations = list(itertools.product(metrics, tfidf))
-    # with Pool(min(os.cpu_count(), len(combinations))) as pool:
-    #     results = [pool.apply_async(evaluate_recommender, args=(metric, tfidf)) for metric, tfidf in combinations]
-    #     output = [p.get() for p in results]
-    # for result in output:
-    #     print(result[0], result[1], '\b:', result[2])
+    pass
