@@ -19,7 +19,7 @@ def generate_gt(target: str) -> None:
     gt.to_parquet(target)
 
 
-def evaluate(recommendations: pd.DataFrame, filename=None) -> dict:
+def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None) -> dict:
     """Evaluate the recommendations based on ground truth
 
     Args:
@@ -36,10 +36,10 @@ def evaluate(recommendations: pd.DataFrame, filename=None) -> dict:
     # drop all rows with no items (nothing to compare against)
     eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
     
-    if filename:
-        if not os.path.exists('./evaluation'):
-            os.mkdir('./evaluation/')
-        eval.to_csv('./evaluation/' + filename + '.csv')
+    if filename and qual_eval_folder:
+        if not os.path.exists(qual_eval_folder):
+            os.makedirs(qual_eval_folder)
+        eval.to_csv(qual_eval_folder + filename + '.csv')
 
     # compute nDCG@k
     eval['nDCG@k'] = eval.apply(lambda row: np.sum([(np.power(2, rec in row['items'])-1)/(np.log2(i+2)) for i, rec in enumerate(row['recommendations'])]), axis=1)
@@ -55,7 +55,7 @@ def evaluate(recommendations: pd.DataFrame, filename=None) -> dict:
     return results_dict
 
 
-def evaluate_recommender(metric: str, tfidf: str) -> tuple:
+def evaluate_recommender(metric: str, tfidf: str, qual_eval_folder='./evaluation') -> tuple:
     """Wrapper function to allow for easy evaluation of specific metrics and tf-idf methods
 
     Args:
@@ -65,16 +65,16 @@ def evaluate_recommender(metric: str, tfidf: str) -> tuple:
     Returns:
         tuple: (metric, tf-idf, evaluation)
     """
-    rec = ContentBasedRec("./data/steam_games.json",sparse=True, distance_metric=metric, tfidf=tfidf)
+    rec = ContentBasedRec("./data/steam_games.json", sparse=True, distance_metric=metric, tfidf=tfidf)
     rec.generate_recommendations("./data/australian_user_reviews.json")
-    return (metric, tfidf, evaluate(rec.recommendations, '%s_%s' % (metric, tfidf)))
+    return (metric, tfidf, evaluate(rec.recommendations, '%s_%s' % (metric, tfidf), qual_eval_folder + '/source'))
 
 def map_id_to_name(mapping, filename):
-    recommendations = pd.read_csv('./evaluation/' + filename)
+    recommendations = pd.read_csv(filename)
     recommendations = recommendations[['item_id', 'recommendations', 'items']]
     for col in recommendations:
-        recommendations[col] = recommendations[col].apply(lambda x: [mapping.get(i, np.nan) for i in ast.literal_eval(x)])
-    recommendations.to_csv('./evaluation/parsed_' + filename)
+        recommendations[col] = recommendations[col].apply(lambda x: [mapping.get(i, 'unknown game') for i in ast.literal_eval(x)])
+    recommendations.to_csv(filename)
 
 
 if __name__ == '__main__':
