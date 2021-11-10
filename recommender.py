@@ -104,14 +104,14 @@ class ContentBasedRec(object):
 
         return items
 
-    def generate_recommendations(self, data_path: str, amount=10) -> None:
+    def generate_recommendations(self, data_path: str, amount=10, read_max=None) -> None:
         """Generate recommendations based on user review data
 
         Args:
             data_path (str): User review data
         """
         items = self.items
-        df = parse_json(data_path)
+        df = parse_json(data_path) if read_max is None else parse_json(data_path, read_max=read_max)
         df.drop(df[~df["reviews"].astype(bool)].index, inplace=True) # filter out empty reviews
         
         # Process reviews 
@@ -149,14 +149,14 @@ class ContentBasedRec(object):
             
             user_vector = None
             if self.use_feedback:
-                positive_ids = [recommend and id for id, recommend in zip(row["item_id"], row["recommend"])]
-                negative_ids = [not recommend and id for id, recommend in zip(row["item_id"], row["recommend"])]
+                reviewed_item_ids = np.array(row["item_id"])
+                recommend = np.array(row["recommend"])
                 
-                positive_items = reviewed_items[reviewed_items["id"].isin(positive_ids)].drop(["id"], axis=1)
-                negative_items = reviewed_items[reviewed_items["id"].isin(negative_ids)].drop(["id"], axis=1)
+                positive_ids = reviewed_item_ids[recommend]
+                negative_ids = reviewed_item_ids[~recommend]
                 
-                positive_values = positive_items.sum()
-                negative_values = negative_items.sum()
+                positive_values = reviewed_items[reviewed_items["id"].isin(positive_ids)].drop(["id"], axis=1).sum()
+                negative_values = reviewed_items[reviewed_items["id"].isin(negative_ids)].drop(["id"], axis=1).sum()
                 
                 user_vector = positive_values.sub(negative_values).div(reviewed_items.shape[0])
             else:
