@@ -189,7 +189,7 @@ class ContentBasedRec(object):
                 # Filter out items in reviews
                 recommendations = list(filter(lambda id: id not in row["item_id"], [items.loc[item]["id"] for item in nns[1][0]]))
 
-            recommendation_list.append(recommendations)
+            recommendation_list.append(recommendations[:amount])
 
         df["recommendations"] = recommendation_list
         self.recommendations = df
