@@ -1,14 +1,14 @@
 # AI-Project
-Recommender system for the AI Project course based on Content-based Recommender Systems 
+Content-based recommender system for the AI Project course
 
 ## Content-based recommender
-Content-based recommenders only rely on the data obtainable from the items themselves to be able to compute the similarity between items. This approach has several advantages over user-based recommenders, like circumventing the cold start problem. We do not need well-established user-item relations to be able to recommend items to users, we can recommend items from the moment a user interacts with it's first item. 
+Content-based recommenders rely only on the data obtainable from the items themselves to be able to compute the similarity between items. This approach has several advantages over user-based recommenders, like circumventing the cold start problem. We do not need well-established user-item relations to be able to recommend items to users, we can recommend items from the moment a user interacts with it's first item. 
 
 ## Data
 The test data that will be used for this recommender is a snapshot of the steam dataset from 2019, located [here](http://deepx.ucsd.edu/public/jmcauley/steam/). 
-* steam_games: A collection of all games present on the steam platform
-* australian_user_items: Steam users along with the games they own.
-* australian_user_reviews: Reviews made by steam users.
+* `steam_games`: A collection of all games present on the steam platform
+* `australian_user_items`: Steam users along with the games they own.
+* `australian_user_reviews`: Reviews made by steam users.
 
 This dataset provides us with items (games), users and user-item interactions in the form of their game library and user reviews of games. These reviews are either positive or negative. 
 
@@ -18,21 +18,9 @@ This dataset provides us with items (games), users and user-item interactions in
 We first implement a base recommender based on the content-based recommendation approach, we will later attempt to optimise this recommender for our dataset. 
 
 ### Content analyzer
-The content analyzer analyses the items and creates easily processable item representations. In the steam dataset, games are already subdivided in different genres and tags. The feature vector for each game is thus a simple one-hot encoded vector for all these different genres and tags.
+The content analyzer is responsible for analyzing the items and creating easily processable item representations. In the steam dataset, games are already subdivided in different genres and tags. The feature vector for each game is thus a simple one-hot encoded vector for all these different genres and tags. The feature matrix that is generated for the library of games is by default encoded as a sparse matrix in order to reduce memory consumption.
 
-### Profile learner
-The profile learner takes into account the user feedback and item feature vectors. For steam the user feedback is provided in the form of game reviews, these reviews can be positive or negative, indicating the user likes or dislikes a certain kind of game. To create a feature vector for the user, we compute the mean for all the game feature vectors for which the user has provided a review.
-
-For this we can either assume all feedback in the form of reviews means the users is interested in the kind of game, or take into account whether or not these reviews are positive or negative. With the latter method we should be able to provide recommendations that are more in line with the user's positive experiences. However, since the way steam works users can only provide reviews for games they own, which means that they are likely interested in the genre of game, even if the review is negative. 
-
-### Filtering component
-The filtering component decides, based on the user profile, which items to recommend to the user. To implement this for our steam dataset, we simply performed a nearest neighbours search on our user vector in the item space, using a combination of different distance metrics. 
-
-#### Distance metrics:
-- Euclidian distance: `sqrt(sum((x - y)^2))`
-- Cosine distance: $1-\frac{x \cdot y}{||x||_2||y||_2}$
-- Manhattan distance: `sum(|x - y|)`
-- Chebyshev distance: `max(|x - y|)`
+We can weight features under the assumption that features that occur less frequently are more informative than those that occur frequently. For this, we can use the following tf-idf weighting schemes:
 
 #### Tf-idf methods:
 - No tf-idf
@@ -41,6 +29,45 @@ The filtering component decides, based on the user profile, which items to recom
 - sublinear tf-idf: `[1 + log(tf)] * [log [n/df(t)] + 1]`
 - smoothed sublinear tf-idf: `[1 + log(tf)] * [log [(1+n)/(1+df(t))] + 1]`
 
-Since we utilise a one-hot encoded feature vector, the sublinear tf-idf produces identical results to the normal tf-idf. 
+Since we utilise a one-hot encoded feature vector, we expect the sublinear tf-idf to produce identical results to the normal tf-idf (the same holds for smoothed and sublinear smoothed tf-idf). 
 
-TODO: more info
+### Profile learner
+The profile learner takes into account the user feedback and item feature vectors. With steam, the user feedback is provided in the form of game reviews. These reviews can be positive or negative, indicating the user likes or dislikes a certain kind of game. To create the user feature vector, we compute the mean of all game feature vectors for which the user has provided a review.
+
+For this we can either opt to interpret a review as a general indicator of interest, or take into account whether a review is positive or negative. We call the latter method 'feedback weighting', as we use a weight of -1 for negative reviews and a weight of +1 for positive reviews (where the weight is multiplied with the game's feature vector). With feedback weighting, we should be able to provide recommendations that are more in line with the user's positive experiences. However, on steam users can only provide reviews for games they own, which means that they are likely interested in a type of game that they reviewed, even if the review for that game is negative.
+
+### Filtering component
+The filtering component decides, based on the user profile, which items to recommend to the user. To implement this for our steam dataset, we simply performed a nearest neighbours search on our user vector in the item space. The nearest neighbour search can be performed with different distance metrics.
+
+#### Distance metrics:
+- Euclidian distance: `sqrt(sum((x - y)^2))`
+- Cosine distance: `1 - x°y / l2_norm(x)*l2_norm(y)` where `x°y` denotes the dot product between `x` and `y`
+- Manhattan distance: `sum(|x - y|)`
+
+To provide accurate and relevant recommendations to the user, we filter out the reviewed items from the nearest neighbours. This way we attempt to reduce the bias by keeping our train and test data strictly seperated. 
+
+## Recommender evaluation
+First, we generate recommendations based on a user's reviews, as outlined above. Then, we evaluate them both quantitatively and qualitatively.
+
+### Quantitative evaluation
+For quantitative evaluation, we use the item inventories of users as the ground truth. Note that reviewed items are excluded from the ground truth in order to ensure that training and evaluation data does not overlap.
+
+We use the following evaluation metrics:
+
+#### Evaluation metrics:
+- recall@k: # relevant recommendations / # items
+- nDCG@k (discounted cumulative gain): DCG / ideal DCG where `DCG = sum[2^{rel_i}-1 / log_2(i+1)]` and `ideal DCG = sum(1/log_2(i+1))`
+
+### Qualitative evaluation:
+In the qualitative evaluation we manually go over a subset of the recommendations, to evaluate how likely and accurate the recommendations seem for the given users. This step is meant to augment the quantative evaluation. We hope to spot obvious shortcomings, patterns or bias that might occur in the recommender, since these defects are not observable in the quantative evaluation. By doing this sanity check we can be sure that the recommender is not failing in any obvious ways.
+
+The following is a small sample of recommendations for the combination of methods with the best performance (cosine distance / no tf-idf / no feedback weighting):
+| Reviews  | Recommendations |
+| ------------- | ------------- |
+| ['Killing Floor']  | ['Killing Floor 2', 'Left 4 Dead 2', 'Call of Duty: World at War', 'Resident Evil Revelations / Biohazard Revelations', 'Left 4 Dead', 'Codename CURE', 'Contagion', 'Piercing Blow', 'Final DOOM', 'Deadfall Adventures']  |
+| ['Galactic Civilizations III']  | ['Galactic Civilizations III: Crusade Expansion Pack', 'Galactic Civilizations III - Mercenaries Expansion Pack', 'Endless SpaceÂ® 2', 'Endless SpaceÂ® - Collection', "Sid Meier's CivilizationÂ®: Beyond Earthâ„¢", 'Horizon', 'Pandora: First Contact', 'Stellar Monarch', 'Distant Worlds: Universe', 'Stellaris']  |
+| ['Grand Theft Auto V', 'Goat Simulator', 'PAYDAY 2']  | ['Just Causeâ„¢ 3', 'Saints Row 2', 'Just Cause 2', 'Turbo Dismountâ„¢', 'Blockland', 'Grand Theft Auto: Episodes from Liberty City', 'Grand Theft Auto: San Andreas', 'SimplePlanes', 'Saints Row: The Third', "Garry's Mod"]  |
+| ['Stardew Valley', 'How to Survive', 'Counter-Strike: Global Offensive', 'Undertale', "Assassin's Creed 2 Deluxe Edition"] | ['Feel The Snow', 'Dead Rising 3 Apocalypse Edition', 'Crea', 'Starbound', "Assassin's CreedÂ® Unity", 'Terraria', "Don't Starve Together", 'Serious Sam 2', 'Dead RisingÂ® 2', 'Scrap Mechanic'] |
+
+We see that for small review sets we still achieve very relevant results. 'Killing floor' is a zombie survival game and as a result the recommender system provides very similar zombie survival games.
+Furthermore, recommendations improve with larger review sets. The final example in the sample contains games that are very distinct, such as 'Stardew Valley', 'How to Survive' and 'Assassin's Creed 2 Deluxe Edition'. The recommendations contains another game from the Assassin's Creed franchise, as well as games that contain elements of those reviewed by the user. For example, 'Terraria' is a game that contains the pixel platformer elements from 'Stardew Valley', as well as the survival aspects from 'How to Survive'.
