@@ -41,7 +41,7 @@ The filtering component decides, based on the user profile, which items to recom
 
 #### Distance metrics:
 - Euclidian distance: `sqrt(sum((x - y)^2))`
-- Cosine distance: `1 - x°y / l2_norm(x)*l2_norm(y)` where `x°y` denotes the dot product between `x` and `y`
+- Cosine distance: `1 - (x · y) / (l2_norm(x)*l2_norm(y))`
 - Manhattan distance: `sum(|x - y|)`
 
 To provide accurate and relevant recommendations to the user, we filter out the reviewed items from the nearest neighbours. This way we attempt to reduce the bias by keeping our train and test data strictly seperated. 
