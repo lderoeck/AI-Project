@@ -40,6 +40,9 @@ def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None
         if not os.path.exists(qual_eval_folder):
             os.makedirs(qual_eval_folder)
         eval.to_csv(qual_eval_folder + filename + '.csv')
+        
+    # Drop reviewed items from ground truth
+    eval['items'] = eval.apply(lambda row: list(set(row['items']).difference(set(row['item_id']))), axis=1)
 
     # compute nDCG@k
     eval['nDCG@k'] = eval.apply(lambda row: np.sum([(np.power(2, rec in row['items'])-1)/(np.log2(i+2)) for i, rec in enumerate(row['recommendations'])]), axis=1)
@@ -55,7 +58,7 @@ def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None
     return results_dict
 
 
-def evaluate_recommender(metric: str, tfidf: str, use_feedback=False, qual_eval_folder='./evaluation') -> tuple:
+def evaluate_recommender(metric: str, tfidf: str, use_feedback=False, qual_eval_folder='./evaluation', read_max=None) -> tuple:
     """Wrapper function to allow for easy evaluation of specific metrics and tf-idf methods
 
     Args:
@@ -67,7 +70,7 @@ def evaluate_recommender(metric: str, tfidf: str, use_feedback=False, qual_eval_
         tuple: (metric, tf-idf, evaluation)
     """
     rec = ContentBasedRec("./data/steam_games.json", sparse=True, distance_metric=metric, tfidf=tfidf, use_feedback=use_feedback)
-    rec.generate_recommendations("./data/australian_user_reviews.json")
+    rec.generate_recommendations("./data/australian_user_reviews.json", read_max=read_max)
     return (metric, tfidf, use_feedback, evaluate(rec.recommendations, '%s_%s_%s' % (metric, tfidf, use_feedback), qual_eval_folder + '/source/'))
 
 
