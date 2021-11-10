@@ -23,7 +23,7 @@ The content analyzer analyses the items and creates easily processable item repr
 ### Profile learner
 The profile learner takes into account the user feedback and item feature vectors. For steam the user feedback is provided in the form of game reviews, these reviews can be positive or negative, indicating the user likes or dislikes a certain kind of game. To create a feature vector for the user, we compute the mean for all the game feature vectors for which the user has provided a review.
 
-TODO: explain positive/negative impact vs assuming all reviews are relevant
+For this we can either assume all feedback in the form of reviews means the users is interested in the kind of game, or take into account whether or not these reviews are positive or negative. With the latter method we should be able to provide recommendations that are more in line with the user's positive experiences. However, since the way steam works users can only provide reviews for games they own, which means that they are likely interested in the genre of game, even if the review is negative. 
 
 ### Filtering component
 The filtering component decides, based on the user profile, which items to recommend to the user. To implement this for our steam dataset, we simply performed a nearest neighbours search on our user vector in the item space, using a combination of different distance metrics. 
