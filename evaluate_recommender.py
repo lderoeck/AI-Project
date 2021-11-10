@@ -43,6 +43,7 @@ def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None
         
     # Drop reviewed items from ground truth
     eval['items'] = eval.apply(lambda row: list(set(row['items']).difference(set(row['item_id']))), axis=1)
+    eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
 
     # compute nDCG@k
     eval['nDCG@k'] = eval.apply(lambda row: np.sum([(np.power(2, rec in row['items'])-1)/(np.log2(i+2)) for i, rec in enumerate(row['recommendations'])]), axis=1)
