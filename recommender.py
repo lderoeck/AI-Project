@@ -1,4 +1,5 @@
 from ast import literal_eval
+from datetime import datetime
 import enum
 
 import numpy as np
@@ -111,14 +112,14 @@ class ContentBasedRec(object):
         """
         items = self.items
         df = parse_json(data_path)
-        df.drop(df[~df["reviews"].astype(bool)].index, inplace=True)
+        df.drop(df[~df["reviews"].astype(bool)].index, inplace=True) # filter out empty reviews
+        
+        # Process reviews 
         df = df.explode("reviews", ignore_index=True)
-
         df = pd.concat([df.drop(["reviews", "user_url"], axis=1), pd.json_normalize(
             df.reviews)], axis=1).drop(["funny", "helpful", "posted", "last_edited", "review"], axis=1)
-        df = df.groupby("user_id").agg(
-            list).reset_index()
-
+        df = df.groupby("user_id").agg(list).reset_index()
+        
         if self.sparse:
             X = scipy.sparse.csr_matrix(items.drop(["id"], axis=1).values)
         else:
@@ -160,9 +161,15 @@ class ContentBasedRec(object):
                 user_vector = positive_values.sub(negative_values).div(reviewed_items.shape[0])
             else:
                 user_vector = reviewed_items.drop(["id"], axis=1).mean()
-            nns = nbrs.kneighbors([user_vector.to_numpy()],
-                                  amount, return_distance=False)[0]
-            recommendations = [items.loc[item]["id"] for item in nns]
+            
+            # Start overhead of 20%
+            gen_am = amount//5
+            recommendations = []
+            while len(recommendations) < amount:
+                gen_am += amount - len(recommendations) # calculate amount of items to be generated
+                nns = nbrs.kneighbors([user_vector.to_numpy()], gen_am, return_distance=True)
+                recommendations = list(filter(lambda id: id not in row["item_id"], [items.loc[item]["id"] for item in nns[1][0]]))
+            
             recommendation_list.append(recommendations)
 
         df["recommendations"] = recommendation_list
@@ -170,6 +177,6 @@ class ContentBasedRec(object):
 
 
 if __name__ == "__main__":
-    rec = ContentBasedRec("./data/steam_games.json", sparse=False)
+    rec = ContentBasedRec("./data/steam_games.json", distance_metric="cosine")
     rec.generate_recommendations("./data/australian_user_reviews.json")
     print(rec.recommendations)
