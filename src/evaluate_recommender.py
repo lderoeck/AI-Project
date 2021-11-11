@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from recommender import parse_json, ContentBasedRec
+from src.recommender import parse_json, ContentBasedRec
 import os
 import ast
 
