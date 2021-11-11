@@ -196,6 +196,4 @@ class ContentBasedRec(object):
 
 
 if __name__ == "__main__":
-    rec = ContentBasedRec("./data/steam_games.json", distance_metric="cosine")
-    rec.generate_recommendations("./data/australian_user_reviews.json")
-    print(rec.recommendations)
+    pass
