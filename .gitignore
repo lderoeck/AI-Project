@@ -131,3 +131,4 @@ dmypy.json
 /data/
 /evaluation/*.csv
 /evaluation/source/*.csv
+/*.zip
