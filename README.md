@@ -46,6 +46,10 @@ The filtering component decides, based on the user profile, which items to recom
 - Cosine distance: `1 - (x · y) / (l2_norm(x)*l2_norm(y))`
 - Manhattan distance: `sum(|x - y|)`
 
+Euclidian distance is distance metric that is used often for real-valued vector space problems. This is the most basic and general distance metric. This means that distance metrics that are known to perform well for our specific problem may perform better than it.
+
+Manhattan distance compused distances for each dimension independently. Thus, it implicitly assumes that tags are independent. This may not be the case for certaing tags of steam games. For example, the tags 'Local Multi-Player' and 'Multi-player' are clearly dependant. This results in unnecessary increased distances towards games with local multi-player.
+
 In information retrieval, cosine is a widely used distance metric for ranked search because it works well for comparing queries to documents. Due to many similarities between documents and games and a similar search strategy (user profile is the query and games are documents), we should expect good performance for our recommender system as well.
 
 To provide accurate and relevant recommendations to the user, we filter out the reviewed items from the nearest neighbours. This way we attempt to reduce the bias by keeping our train and test data strictly separated.
