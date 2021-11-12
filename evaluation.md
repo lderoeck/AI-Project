@@ -11,7 +11,7 @@ We use the following evaluation metrics:
 - nDCG@k (discounted cumulative gain): DCG / ideal DCG where `DCG = sum[2^{rel_i}-1 / log_2(i+1)]` and `ideal DCG = sum(1/log_2(i+1))`
 
 We then perform an evaluation for all different combination of recommender techniques that were outlined before:
-| recall@10 | Euclidian  | Manhattan | Cosine | Cosine + feedback weighting |
+| recall@10 | Euclidean  | Manhattan | Cosine | Cosine + feedback weighting |
 | ------------- | ------------- | ------------- | ------------- | ------------- |
 | No tf-idf | 0.007783  | 0.007798 | 0.018838 | 0.017088 |
 | Tf-idf | 0.011887  | 0.013003 | 0.017975 | 0.016515 |
@@ -19,7 +19,7 @@ We then perform an evaluation for all different combination of recommender techn
 | Sublinear | 0.011887  | 0.013003 | 0.017975 | 0.016515 |
 | Smooth Sublinear | 0.011895  | 0.012999 | 0.017978 | 0.016513 |
 
-| nDCG@10 | Euclidian  | Manhattan | Cosine | Cosine + feedback weighting |
+| nDCG@10 | Euclidean  | Manhattan | Cosine | Cosine + feedback weighting |
 | ------------- | ------------- | ------------- | ------------- | ------------- |
 | No tf-idf | 0.063212  | 0.063262 | 0.152079 | 0.137673 |
 | Tf-idf | 0.081598  | 0.094712 | 0.141916 | 0.129756 |
