@@ -1,8 +1,23 @@
 # AI-Project
 Content-based recommender system for the AI Project course
 
+## Code organization:
+* `data` folder: this is where the necessary steam data files should be placed
+* `src` folder:
+    - `recommender.py`: Contains a class which implements the content-based recommender
+    - `evaluate_recommender.py`: Contains functions which help with evaluating the recommendations
+* `data_analysis.ipynb`: Notebook containing different types of data analysis results which helps to identify properties of the underlying data. This helps us to better understand why the recommender behaves in a certain way for the given dataset.
+* `notebook.ipynb`: The main notebook which implements the evaluation of the recommender system for several techniques, as well as the generation of human-readable data files for qualitative evaluation.
+* `evaluation` folder: This is where the output files of the recommender evaluation go. We provided a zip file which contains the generated recommendations for a number of techniques.
+
+## Installation & running the code
+First, make sure to install all necessary requirements by running `pip install -r requirements.txt`. All requirements are *hard* requirements, the code will not work without them.
+Next, place all of the necessary data files (australian_user_reviews.json, australian_user_items.json, ...) in the data folder.
+
+Now, the evaluation results can be reproduced by running the code blocks in `notebook.ipynb`. Note that generating recommendations for all of the different techniques can take a lot of time (it took around 66 minutes on an AMD Ryzen 5900x). Therefore, we also provided an `evaluation.zip` file, which contains generated recommendations for most of the technique combinations (except for feedback weighting). Simply running the last cell of the notebook then provides human-readable data files that can be used for qualitative evaluation. Generating recommendations doesn't use too much RAM however, so a system with 16GB of RAM should suffice.
+
 ## Content-based recommender
-Content-based recommenders rely only on the data obtainable from the items themselves to be able to compute the similarity between items. This approach has several advantages over user-based recommenders, like circumventing the cold start problem. We do not need well-established user-item relations to be able to recommend items to users, we can recommend items from the moment a user interacts with it's first item. 
+Content-based recommenders rely only on the data obtainable from the items themselves to be able to compute the similarity between items. This approach has several advantages over user-based recommenders, like circumventing the cold start problem. We do not need well-established user-item relations to be able to recommend items to users, we can recommend items from the moment a user interacts with it's first item.
 
 ## Data
 The test data that will be used for this recommender is a snapshot of the steam dataset from 2019, located [here](http://deepx.ucsd.edu/public/jmcauley/steam/). 
@@ -12,7 +27,7 @@ The test data that will be used for this recommender is a snapshot of the steam 
 
 This dataset provides us with items (games), users and user-item interactions in the form of their game library and user reviews of games. These reviews are either positive or negative. 
 
-## Base Recommender
+## Base recommender
 ![base recommender visualization (source: Content-based recommender systems: State of the art and trends)](./ContentBasedRec.png)
 
 We first implement a base recommender based on the content-based recommendation approach, we will later attempt to optimise this recommender for our dataset. 
@@ -75,6 +90,7 @@ We use the following evaluation metrics:
 
 We then perform an evaluation for all different combination of recommender techniques that were outlined before:
 | recall@10 | Euclidian  | Manhattan | Cosine | Cosine + feedback weighting |
+| ------------- | ------------- | ------------- | ------------- | ------------- |
 | No tf-idf | 0.007783  | 0.007798 | 0.018838 | 0.017088 |
 | Tf-idf | 0.011887  | 0.013003 | 0.017975 | 0.016515 |
 | Smooth | 0.011895  | 0.012999 | 0.017978 | 0.016513 |
@@ -82,6 +98,7 @@ We then perform an evaluation for all different combination of recommender techn
 | Smooth Sublinear | 0.011895  | 0.012999 | 0.017978 | 0.016513 |
 
 | nDCG@10 | Euclidian  | Manhattan | Cosine | Cosine + feedback weighting |
+| ------------- | ------------- | ------------- | ------------- | ------------- |
 | No tf-idf | 0.063212  | 0.063262 | 0.152079 | 0.137673 |
 | Tf-idf | 0.081598  | 0.094712 | 0.141916 | 0.129756 |
 | Smooth | 0.081671  | 0.094734 | 0.141907 | 0.129739 |
