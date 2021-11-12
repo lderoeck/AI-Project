@@ -29,7 +29,26 @@ We then perform an evaluation for all different combination of recommender techn
 
 We see that cosine distance performs best quantitatively, which confirms the hypothesis that games are similar to documents (and thus the problem of predicting recommendations is similar to a ranked search in information retrieval).
 
-For some reason, tf-idf performs slightly worse quantitatively for cosine distance, which was unexpected. Therefore, we will take a closer look at this during qualitative evaluation.
+However, we can also normalize the features (by dividing them by the l2-norm) in order to mitigate some of the undesired effects of using the less-favourable distance metrics. With normalization, we get the following results:
+ | recall@10 | Euclidean  | Manhattan | Cosine | Cosine + feedback weighting |
+| ------------- | ------------- | ------------- | ------------- | ------------- |
+| No tf-idf | 0.018568  | 0.018472 | 0.018625 | 0.016901 |
+| Tf-idf | 0.017578  | 0.017569 | 0.017975 | 0.016515 |
+| Smooth | 0.017587  | 0.017557 | 0.017978 | 0.016513 |
+| Sublinear | 0.017578  | 0.017569 | 0.017975 | 0.016515 |
+| Smooth Sublinear | 0.017587  | 0.017557 | 0.017978 | 0.016513 |
+
+| nDCG@10 | Euclidean  | Manhattan | Cosine | Cosine + feedback weighting |
+| ------------- | ------------- | ------------- | ------------- | ------------- |
+| No tf-idf | 0.149482  | 0.143273 | 0.149111 | 0.135160 |
+| Tf-idf | 0.138765  | 0.143217 | 0.141916 | 0.129756 |
+| Smooth | 0.138798  | 0.143177 | 0.141907 | 0.129739 |
+| Sublinear | 0.138765  | 0.143217 | 0.141916 | 0.129756 |
+| Smooth Sublinear | 0.138798  | 0.143177 | 0.141907 | 0.129739 |
+
+Thus, both Euclidean and Manhattan provide good approximations of distance if the features are normalized. However, computation performance is not as good as with the cosine distance. Therefore, we opted to look at the results for cosine distance during qualitative evaluation.
+
+For some reason, tf-idf performs slightly worse quantitatively, which was unexpected. Therefore, we will also take a closer look at this during qualitative evaluation.
 
 Finally, feedback weighting results in worse performance, which confirms our hypothesis that negative reviews also provide an indication for the user's interest (since he/she had to buy the game in the first place). We further investigate this in qualitative evaluation.
 

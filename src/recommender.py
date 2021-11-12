@@ -7,7 +7,7 @@ from pandas import DataFrame
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.neighbors import BallTree, KDTree, NearestNeighbors
-from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.preprocessing import MultiLabelBinarizer, Normalizer
 from tqdm import tqdm
 
 
@@ -42,7 +42,7 @@ def parse_json(filename_python_json: str, read_max: int = -1) -> DataFrame:
 
 
 class ContentBasedRec(object):
-    def __init__(self, items_path: str, sparse: bool = True, distance_metric='minkowski', dim_red=None, tfidf='default', use_feedback=True) -> None:
+    def __init__(self, items_path: str, sparse: bool = True, distance_metric='minkowski', dim_red=None, tfidf='default', use_feedback=True, normalize=False) -> None:
         """Content based recommender
 
         Args:
@@ -57,8 +57,10 @@ class ContentBasedRec(object):
         self.sparse = sparse
         self.dim_red = dim_red
         self.use_feedback = use_feedback
+        self.normalize = normalize
         self.items = self._generate_item_features(parse_json(items_path))
         self.recommendations = None
+        self.normalizer = Normalizer(copy=False)
         
         # Select tf-idf method to use
         self.tfidf = None
@@ -142,6 +144,9 @@ class ContentBasedRec(object):
         if self.dim_red:
             # Use dimensionality reduction
             X = self.dim_red.fit_transform(X)
+            
+        if self.normalize:
+            X = self.normalizer.fit_transform(X)
 
         # Combine transformed feature vector back into items
         if self.sparse:
@@ -179,13 +184,17 @@ class ContentBasedRec(object):
                 # Computing average, assuming all reviews are indication of interest
                 user_vector = reviewed_items.drop(["id"], axis=1).mean()
 
+            if self.normalize:
+                user_vector = self.normalizer.transform([user_vector.to_numpy()])
+            else:
+                user_vector = [user_vector.to_numpy()]
             # Start overhead of 20%
             gen_am = amount//5
             recommendations = []
             while len(recommendations) < amount:
                 # calculate amount of items to be generated
                 gen_am += amount - len(recommendations)
-                nns = nbrs.kneighbors([user_vector.to_numpy()], gen_am, return_distance=True)
+                nns = nbrs.kneighbors(user_vector, gen_am, return_distance=True)
                 # Filter out items in reviews
                 recommendations = list(filter(lambda id: id not in row["item_id"], [items.loc[item]["id"] for item in nns[1][0]]))
 
