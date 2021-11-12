@@ -17,8 +17,8 @@ This dataset provides us with items (games), users and user-item interactions in
 
 We first implement a base recommender based on the content-based recommendation approach, we will later attempt to optimise this recommender for our dataset. 
 
-### Content analyzer
-The content analyzer is responsible for analyzing the items and creating easily processable item representations. In the steam dataset, games are already subdivided in different genres and tags. The feature vector for each game is thus a simple one-hot encoded vector for all these different genres and tags. The feature matrix that is generated for the library of games is by default encoded as a sparse matrix in order to reduce memory consumption.
+### Content analyser
+The content analyser is responsible for analysing the items and creating easily processable item representations. In the steam dataset, games are already subdivided in different genres and tags. The feature vector for each game is thus a simple one-hot encoded vector for all these different genres and tags. The feature matrix that is generated for the library of games is by default encoded as a sparse matrix in order to reduce memory consumption.
 
 We can weight features under the assumption that features that occur less frequently are more informative than those that occur frequently. For this, we can use the following tf-idf weighting schemes:
 
@@ -29,7 +29,9 @@ We can weight features under the assumption that features that occur less freque
 - sublinear tf-idf: `[1 + log(tf)] * [log [n/df(t)] + 1]`
 - smoothed sublinear tf-idf: `[1 + log(tf)] * [log [(1+n)/(1+df(t))] + 1]`
 
-Since we utilise a one-hot encoded feature vector, we expect the sublinear tf-idf to produce identical results to the normal tf-idf (the same holds for smoothed and sublinear smoothed tf-idf). 
+Since we utilise a one-hot encoded feature vector, we expect the sublinear tf-idf to produce identical results to the normal tf-idf (the same holds for smoothed and sublinear smoothed tf-idf).
+
+We expect tf-idf to improve performance, as it prevents bias towards tags that are very common accross the steam games library.
 
 ### Profile learner
 The profile learner takes into account the user feedback and item feature vectors. With steam, the user feedback is provided in the form of game reviews. These reviews can be positive or negative, indicating the user likes or dislikes a certain kind of game. To create the user feature vector, we compute the mean of all game feature vectors for which the user has provided a review.
@@ -44,7 +46,16 @@ The filtering component decides, based on the user profile, which items to recom
 - Cosine distance: `1 - (x · y) / (l2_norm(x)*l2_norm(y))`
 - Manhattan distance: `sum(|x - y|)`
 
-To provide accurate and relevant recommendations to the user, we filter out the reviewed items from the nearest neighbours. This way we attempt to reduce the bias by keeping our train and test data strictly seperated. 
+In information retrieval, cosine is a widely used distance metric for ranked search because it works well for comparing queries to documents. Due to many similarities between documents and games and a similar search strategy (user profile is the query and games are documents), we should expect good performance for our recommender system as well.
+
+To provide accurate and relevant recommendations to the user, we filter out the reviewed items from the nearest neighbours. This way we attempt to reduce the bias by keeping our train and test data strictly separated.
+
+### Assumptions & expectations
+Overall, we make the following assumptions for our recommender system and evaluation process:
+- The inventories of users are the ground truth of user's interests (note that in reality this may not be the case)
+- A review is an indication of interest, independent from the sentiment that is associated with it (like/dislike)
+- Games are very similar to documents, so we expect cosine distance to work well
+- Tf-idf prevents bias towards common tags, so we expect it to perform well
 
 ## Recommender evaluation
 First, we generate recommendations based on a user's reviews, as outlined above. Then, we evaluate them both quantitatively and qualitatively.
@@ -58,8 +69,29 @@ We use the following evaluation metrics:
 - recall@k: # relevant recommendations / # items
 - nDCG@k (discounted cumulative gain): DCG / ideal DCG where `DCG = sum[2^{rel_i}-1 / log_2(i+1)]` and `ideal DCG = sum(1/log_2(i+1))`
 
+We then perform an evaluation for all different combination of recommender techniques that were outlined before:
+| recall@10 | Euclidian  | Manhattan | Cosine | Cosine + feedback weighting |
+| No tf-idf | 0.007783  | 0.007798 | 0.018838 | 0.017088 |
+| Tf-idf | 0.011887  | 0.013003 | 0.017975 | 0.016515 |
+| Smooth | 0.011895  | 0.012999 | 0.017978 | 0.016513 |
+| Sublinear | 0.011887  | 0.013003 | 0.017975 | 0.016515 |
+| Smooth Sublinear | 0.011895  | 0.012999 | 0.017978 | 0.016513 |
+
+| nDCG@10 | Euclidian  | Manhattan | Cosine | Cosine + feedback weighting |
+| No tf-idf | 0.063212  | 0.063262 | 0.152079 | 0.137673 |
+| Tf-idf | 0.081598  | 0.094712 | 0.141916 | 0.129756 |
+| Smooth | 0.081671  | 0.094734 | 0.141907 | 0.129739 |
+| Sublinear | 0.081598  | 0.094712 | 0.141916 | 0.129756 |
+| Smooth Sublinear | 0.081671  | 0.094734 | 0.141907 | 0.129739 |
+
+We see that cosine distance performs best quantitatively, which confirms the hypothesis that games are similar to documents (and thus the problem of predicting recommendations is similar to a ranked search in information retrieval).
+
+For some reason, tf-idf performs slightly worse quantitatively for cosine distance, which was unexpected. Therefore, we will take a closer look at this during qualitative evaluation.
+
+Finally, feedback weighting results in worse performance, which confirms our hypothesis that negative reviews also provide an indication for the user's interest (since he/she had to buy the game in the first place). We further investigate this in qualitative evaluation.
+
 ### Qualitative evaluation:
-In the qualitative evaluation we manually go over a subset of the recommendations, to evaluate how likely and accurate the recommendations seem for the given users. This step is meant to augment the quantative evaluation. We hope to spot obvious shortcomings, patterns or bias that might occur in the recommender, since these defects are not observable in the quantative evaluation. By doing this sanity check we can be sure that the recommender is not failing in any obvious ways.
+In the qualitative evaluation we manually go over a subset of the recommendations, to evaluate how likely and accurate the recommendations seem for the given users. This step is meant to augment the quantitative evaluation. We hope to spot obvious shortcomings, patterns or bias that might occur in the recommender, since these defects are not observable in the quantitative evaluation. By doing this sanity check we can be sure that the recommender is not failing in any obvious ways.
 
 The following is a small sample of recommendations for the combination of methods with the best performance (cosine distance / no tf-idf / no feedback weighting):
 | Reviews  | Recommendations |
