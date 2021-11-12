@@ -57,11 +57,11 @@ For this we can either opt to interpret a review as a general indicator of inter
 The filtering component decides, based on the user profile, which items to recommend to the user. To implement this for our steam dataset, we simply performed a nearest neighbours search on our user vector in the item space. The nearest neighbour search can be performed with different distance metrics.
 
 #### Distance metrics:
-- Euclidian distance: `sqrt(sum((x - y)^2))`
+- Euclidean distance: `sqrt(sum((x - y)^2))`
 - Cosine distance: `1 - (x · y) / (l2_norm(x)*l2_norm(y))`
 - Manhattan distance: `sum(|x - y|)`
 
-Euclidian distance is distance metric that is used often for real-valued vector space problems. This is the most basic and general distance metric. This means that distance metrics that are known to perform well for our specific problem may perform better than it.
+Euclidean distance is distance metric that is used often for real-valued vector space problems. This is the most basic and general distance metric. This means that distance metrics that are known to perform well for our specific problem may perform better than it.
 
 Manhattan distance computed distances for each dimension independently. Thus, it implicitly assumes that tags are independent. This may not be the case for certain tags of steam games. For example, the tags 'Local Multi-Player' and 'Multi-player' are clearly dependant. This results in unnecessary increased distances towards games with local multi-player.
 
