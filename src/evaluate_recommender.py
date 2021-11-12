@@ -83,12 +83,16 @@ def map_id_to_name(mapping: dict, filename: str) -> None:
         filename (str): input file name
     """
     recommendations = pd.read_csv(filename)
-    recommendations = recommendations[['item_id', 'recommendations', 'items']]
+    recommendations = recommendations[['user_id', 'item_id', 'recommendations', 'items']]
     for col in recommendations:
+        if col == 'user_id':
+            continue
         recommendations[col] = recommendations[col].apply(
             lambda x: [mapping.get(i, 'unknown game') for i in ast.literal_eval(x)])
     recommendations.to_csv(filename)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  
     pass
+    # result = evaluate_recommender('cosine', None, False, './evaluation', read_max=3000)
+    # print(result)
