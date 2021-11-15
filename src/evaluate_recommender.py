@@ -46,8 +46,8 @@ def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None
     eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
 
     # compute nDCG@k
-    eval['nDCG@k'] = eval.apply(lambda row: np.sum([(np.power(2, rec in row['items'])-1)/(np.log2(i+2)) for i, rec in enumerate(row['recommendations'])]), axis=1)
-    eval['nDCG@k'] = eval.apply(lambda row: row['nDCG@k']/np.sum([1/(np.log2(i+2)) for i in range(len(row['recommendations']))]), axis=1)
+    eval['nDCG@k'] = eval.apply(lambda row: np.sum([int(rec in row['items'])/(np.log2(i+2)) for i, rec in enumerate(row['recommendations'])]), axis=1)
+    eval['nDCG@k'] = eval.apply(lambda row: row['nDCG@k']/np.sum([1/(np.log2(i+2)) for i in range(min(len(row['recommendations']), len(row['items'])))]), axis=1)
     results_dict['nDCG@k'] = eval['nDCG@k'].mean()
 
     # compute recall@k
