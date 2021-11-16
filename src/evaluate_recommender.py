@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from src.recommender import parse_json, ContentBasedRec
+from recommender import parse_json, ContentBasedRec
 import os
 import ast
 
@@ -39,7 +39,7 @@ def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None
     if filename and qual_eval_folder:
         if not os.path.exists(qual_eval_folder):
             os.makedirs(qual_eval_folder)
-        eval.to_csv(qual_eval_folder + filename + '.csv')
+        eval.to_parquet(qual_eval_folder + filename + '.parquet')
         
     # Drop reviewed items from ground truth
     eval['items'] = eval.apply(lambda row: list(set(row['items']).difference(set(row['item_id']))), axis=1)
@@ -55,6 +55,9 @@ def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None
     eval['recommendations'] = eval['recommendations'].apply(set)
     eval['recall@k'] = eval.apply(lambda row: len(row['recommendations'].intersection(row['items']))/len(row['items']), axis=1)
     results_dict['recall@k'] = eval['recall@k'].mean()
+
+    eval['ideal_recall@k'] = eval.apply(lambda row: min(len(row['items']), len(row["recommendations"]))/len(row['items']), axis=1)
+    results_dict['ideal_recall@k'] = eval['ideal_recall@k'].mean()
 
     return results_dict
 
@@ -94,5 +97,3 @@ def map_id_to_name(mapping: dict, filename: str) -> None:
 
 if __name__ == '__main__':  
     pass
-    # result = evaluate_recommender('cosine', None, False, './evaluation', read_max=3000)
-    # print(result)
