@@ -3,6 +3,7 @@ import numpy as np
 from recommender import parse_json, ContentBasedRec
 import os
 import ast
+from os.path import exists
 
 
 def generate_gt(target: str) -> None:
@@ -28,6 +29,10 @@ def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None
     Returns:
         dict: a dict containing the recall@k and nDCG@k
     """
+    gt_file = './data/ground_truth.parquet'
+    if not exists(gt_file):
+        generate_gt(gt_file)
+        
     eval = recommendations.drop(recommendations[~recommendations['recommendations'].astype(bool)].index)  # drop all recommendations that are empty
     gt = pd.read_parquet('./data/ground_truth.parquet')
     eval = eval.merge(gt, on=['user_id'])
@@ -58,6 +63,9 @@ def evaluate(recommendations: pd.DataFrame, filename=None, qual_eval_folder=None
 
     eval['ideal_recall@k'] = eval.apply(lambda row: min(len(row['items']), len(row["recommendations"]))/len(row['items']), axis=1)
     results_dict['ideal_recall@k'] = eval['ideal_recall@k'].mean()
+    
+    eval['nRecall@k'] = eval.apply(lambda row: row['recall@k']/row['ideal_recall@k'])
+    results_dict['nRecall@k'] = eval['nRecall@k'].mean()
 
     return results_dict
 
