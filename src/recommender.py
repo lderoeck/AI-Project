@@ -97,7 +97,7 @@ class ContentBasedRec(object):
         # Combine genres, tags and specs into one column
         items["genres"] = items["genres"].fillna("").apply(set)
         items["tags"] = items["tags"].fillna("").apply(set)
-        items["specs"] = items["genres"].fillna("").apply(set)
+        items["specs"] = items["specs"].fillna("").apply(set)
         items["tags"] = items.apply(lambda x: list(
             set.union(x["genres"], x["tags"], x["specs"])), axis=1)
         items = items.drop(["genres", "specs"], axis=1)
