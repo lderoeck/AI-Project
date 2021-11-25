@@ -91,13 +91,12 @@ class ContentBasedRec(object):
             DataFrame: dataframe with feature vector appended
         """
         items.drop(["publisher", "app_name", "title", "url", "release_date", "discount_price", "reviews_url",
-                    "price", "early_access", "developer", "sentiment", "metascore"], axis=1, inplace=True)
+                    "price", "early_access", "developer", "sentiment", "metascore", "specs"], axis=1, inplace=True)
         items.dropna(subset=["id"], inplace=True)
         items = items.reset_index(drop=True)
         # Combine genres, tags and specs into one column
         items["genres"] = items["genres"].fillna("").apply(set)
         items["tags"] = items["tags"].fillna("").apply(set)
-        items["specs"] = items["specs"].fillna("").apply(set)
         items["tags"] = items.apply(lambda x: list(
             set.union(x["genres"], x["tags"], x["specs"])), axis=1)
         items = items.drop(["genres", "specs"], axis=1)
