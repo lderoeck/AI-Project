@@ -98,8 +98,8 @@ class ContentBasedRec(object):
         items["genres"] = items["genres"].fillna("").apply(set)
         items["tags"] = items["tags"].fillna("").apply(set)
         items["tags"] = items.apply(lambda x: list(
-            set.union(x["genres"], x["tags"], x["specs"])), axis=1)
-        items = items.drop(["genres", "specs"], axis=1)
+            set.union(x["genres"], x["tags"])), axis=1)
+        items = items.drop(["genres"], axis=1)
 
         # Compute one-hot encoded vector of tags
         mlb = MultiLabelBinarizer(sparse_output=self.sparse)
