@@ -88,7 +88,7 @@ class BaseRecommender(object):
     def _generate_item_features(self, items: pd.DataFrame):
         pass
     
-    def evaluate(self, filename=None, qual_eval_folder=None) -> dict:
+    def evaluate(self, filename=None, qual_eval_folder=None, k=10) -> dict:
         """Evaluate the recommendations based on ground truth
 
         Args:
@@ -117,26 +117,33 @@ class BaseRecommender(object):
                 os.makedirs(qual_eval_folder)
             eval.to_parquet(qual_eval_folder + filename + '.parquet')
             
+        # Cap to k recommendations
+        eval['recommendations'] = eval['recommendations'].apply(lambda recs: recs[:k])
+            
         # Drop reviewed items from ground truth
         eval['items'] = eval.apply(lambda row: list(set(row['items']).difference(set(row['item_id']))), axis=1)
         eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
+        
+        # compute HR@k
+        eval['HR@k'] = eval.apply(lambda row: int(any(rec in row['recommendations'] for rec in row['items'])), axis=1)
+        results_dict[f'HR@{k}'] = eval['HR@k'].mean()
 
         # compute nDCG@k
         eval['nDCG@k'] = eval.apply(lambda row: np.sum([int(rec in row['items'])/(np.log2(i+2)) for i, rec in enumerate(row['recommendations'])]), axis=1)
         eval['nDCG@k'] = eval.apply(lambda row: row['nDCG@k']/np.sum([1/(np.log2(i+2)) for i in range(min(len(row['recommendations']), len(row['items'])))]), axis=1)
-        results_dict['nDCG@k'] = eval['nDCG@k'].mean()
+        results_dict[f'nDCG@{k}'] = eval['nDCG@k'].mean()
 
         # compute recall@k
         eval['items'] = eval['items'].apply(set)
         eval['recommendations'] = eval['recommendations'].apply(set)
         eval['recall@k'] = eval.apply(lambda row: len(row['recommendations'].intersection(row['items']))/len(row['items']), axis=1)
-        results_dict['recall@k'] = eval['recall@k'].mean()
+        results_dict[f'recall@{k}'] = eval['recall@k'].mean()
 
         eval['ideal_recall@k'] = eval.apply(lambda row: min(len(row['items']), len(row["recommendations"]))/len(row['items']), axis=1)
-        results_dict['ideal_recall@k'] = eval['ideal_recall@k'].mean()
+        results_dict[f'ideal_recall@{k}'] = eval['ideal_recall@k'].mean()
         
         eval['nRecall@k'] = eval.apply(lambda row: row['recall@k']/row['ideal_recall@k'], axis=1)
-        results_dict['nRecall@k'] = eval['nRecall@k'].mean()
+        results_dict[f'nRecall@{k}'] = eval['nRecall@k'].mean()
 
         return results_dict
     
@@ -344,6 +351,7 @@ class ImprovedRecommender(BaseRecommender):
         items.drop(["publisher", "app_name", "title", "url", "release_date", "discount_price", "reviews_url",
                     "price", "early_access", "sentiment", "metascore"], axis=1, inplace=True)
         columns = ["genres", "tags", "specs", "developer"]
+        # items["developer"] = items["developer"].apply(lambda my_str: my_str.split(','))
         # Combine genres, tags and specs into one column
         for col in columns:
             items[col] = items[col].fillna("").apply(set)
