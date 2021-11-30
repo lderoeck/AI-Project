@@ -130,6 +130,8 @@ dmypy.json
 
 /data/
 /evaluation/*.csv
+/evaluation/*.parquet
 /evaluation/source/*.csv
+/evaluation/source/*.parquet
 /*.zip
 /evaluate_csv.py
