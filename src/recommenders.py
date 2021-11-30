@@ -71,17 +71,21 @@ class BaseRecommender(object):
         users.sort_values("items_count", inplace=True)
         users.drop(users[users["items_count"] < 3].index, inplace=True)
         users.drop(users[users["items_count"] > 1024].index, inplace=True)
+        users["item_id"] = users["items"].apply(lambda row: [game["item_id"] for game in row])
+        users["playtime_forever"] = users["items"].apply(lambda row: [game["playtime_forever"] for game in row])
+        users["playtime_2weeks"] = users["items"].apply(lambda row: [game["playtime_2weeks"] for game in row])
+        users = users.drop("items")
         users = users.reset_index(drop=True)
         return users
     
     def _preprocess_reviews(self, reviews: pd.DataFrame):
         reviews.dropna(subset=["user_id", "reviews"], inplace=True)
-        reviews["reviews"] = reviews["reviews"].apply(lambda lst: [{"item_id": i["item_id"], "recommend": i["recommend"]} for i in lst]) # explode
+        reviews.drop(reviews[~reviews["reviews"].astype(bool)].index, inplace=True) # filter out empty review sets
         reviews["item_id"] = reviews["reviews"].apply(lambda row: [review["item_id"] for review in row])
         reviews["recommend"] = reviews["reviews"].apply(lambda row: [review["recommend"] for review in row])
         reviews["reviews_count"] = reviews["reviews"].apply(len)
+        reviews = reviews.drop("reviews")
         reviews.sort_values("reviews_count", inplace=True)
-        reviews.drop(reviews[~reviews["reviews"].astype(bool)].index, inplace=True) # filter out empty review sets
         reviews = reviews.reset_index(drop=True)
         return reviews
     
