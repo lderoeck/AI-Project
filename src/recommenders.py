@@ -74,7 +74,7 @@ class BaseRecommender(object):
         users["item_id"] = users["items"].apply(lambda row: [game["item_id"] for game in row])
         users["playtime_forever"] = users["items"].apply(lambda row: [game["playtime_forever"] for game in row])
         users["playtime_2weeks"] = users["items"].apply(lambda row: [game["playtime_2weeks"] for game in row])
-        users = users.drop("items")
+        users = users.drop("items", axis=1)
         users = users.reset_index(drop=True)
         return users
     
@@ -84,7 +84,7 @@ class BaseRecommender(object):
         reviews["item_id"] = reviews["reviews"].apply(lambda row: [review["item_id"] for review in row])
         reviews["recommend"] = reviews["reviews"].apply(lambda row: [review["recommend"] for review in row])
         reviews["reviews_count"] = reviews["reviews"].apply(len)
-        reviews = reviews.drop("reviews")
+        reviews = reviews.drop("reviews", axis=1)
         reviews.sort_values("reviews_count", inplace=True)
         reviews = reviews.reset_index(drop=True)
         return reviews
@@ -425,7 +425,6 @@ class ImprovedRecommender(BaseRecommender):
 
         recommendation_list = []
         for index, row in tqdm(df.iterrows()):
-            review = row["reviews"]
             # Compute uservector and recommendations for all users
             reviewed_items = items[items["id"].isin(row["item_id"])]
 
