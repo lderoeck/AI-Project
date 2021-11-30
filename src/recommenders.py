@@ -14,16 +14,16 @@ import warnings
 from os.path import exists
 import os
 
-def generate_gt(target: str) -> None:
-    """Generates ground truth data to target
+# def generate_gt(target: str) -> None:
+#     """Generates ground truth data to target
 
-    Args:
-        target (str): Path to file destination
-    """
-    gt = parse_json("./data/australian_users_items.json")
-    gt['items'] = gt['items'].apply(lambda items: [item['item_id'] for item in items])
-    gt = gt.drop(['user_url'], axis=1)
-    gt.to_parquet(target)
+#     Args:
+#         target (str): Path to file destination
+#     """
+#     gt = parse_json("./data/australian_users_items.json")
+#     gt['items'] = gt['items'].apply(lambda items: [item['item_id'] for item in items])
+#     gt = gt.drop(['user_url'], axis=1)
+#     gt.to_parquet(target)
 
 def parse_json(filename_python_json: str, read_max: int = -1) -> DataFrame:
     """Parses json file into a DataFrame
@@ -54,9 +54,12 @@ def parse_json(filename_python_json: str, read_max: int = -1) -> DataFrame:
 
 
 class BaseRecommender(object):
-    def __init__(self, items_path: str) -> None:
+    def __init__(self, items_path: str, train_path: str, test_path: str, validation_path: str) -> None:
         items = self._preprocess_items(parse_json(items_path))
         self.items = self._generate_item_features(items)
+        self.train = pd.read_parquet(train_path)
+        self.test = pd.read_parquet(test_path)
+        self.validation = pd.read_parquet(validation_path)
         self.recommendations = pd.DataFrame()
         
     def _preprocess_items(self, items: pd.DataFrame):
@@ -64,30 +67,31 @@ class BaseRecommender(object):
         items["price"] = items["price"].apply(lambda p: np.float32(p) if re.match(r"\d+(?:.\d{2})?", str(p)) else 0)
         items["metascore"] = items["metascore"].apply(lambda m: m if m != "NA" else np.nan)
         items = items.reset_index(drop=True)
+        # TODO: transform id to new id with dict
         return items
     
-    def _preprocess_users(self, users: pd.DataFrame):
-        users.dropna(subset=["user_id", "items"], inplace=True)
-        users.sort_values("items_count", inplace=True)
-        users.drop(users[users["items_count"] < 3].index, inplace=True)
-        users.drop(users[users["items_count"] > 1024].index, inplace=True)
-        users["item_id"] = users["items"].apply(lambda row: [game["item_id"] for game in row])
-        users["playtime_forever"] = users["items"].apply(lambda row: [game["playtime_forever"] for game in row])
-        users["playtime_2weeks"] = users["items"].apply(lambda row: [game["playtime_2weeks"] for game in row])
-        users = users.drop("items", axis=1)
-        users = users.reset_index(drop=True)
-        return users
+    # def _preprocess_users(self, users: pd.DataFrame):
+    #     users.dropna(subset=["user_id", "items"], inplace=True)
+    #     users.sort_values("items_count", inplace=True)
+    #     users.drop(users[users["items_count"] < 3].index, inplace=True)
+    #     users.drop(users[users["items_count"] > 1024].index, inplace=True)
+    #     users["item_id"] = users["items"].apply(lambda row: [game["item_id"] for game in row])
+    #     users["playtime_forever"] = users["items"].apply(lambda row: [game["playtime_forever"] for game in row])
+    #     users["playtime_2weeks"] = users["items"].apply(lambda row: [game["playtime_2weeks"] for game in row])
+    #     users = users.drop("items", axis=1)
+    #     users = users.reset_index(drop=True)
+    #     return users
     
-    def _preprocess_reviews(self, reviews: pd.DataFrame):
-        reviews.dropna(subset=["user_id", "reviews"], inplace=True)
-        reviews.drop(reviews[~reviews["reviews"].astype(bool)].index, inplace=True) # filter out empty review sets
-        reviews["item_id"] = reviews["reviews"].apply(lambda row: [review["item_id"] for review in row])
-        reviews["recommend"] = reviews["reviews"].apply(lambda row: [review["recommend"] for review in row])
-        reviews["reviews_count"] = reviews["reviews"].apply(len)
-        reviews = reviews.drop("reviews", axis=1)
-        reviews.sort_values("reviews_count", inplace=True)
-        reviews = reviews.reset_index(drop=True)
-        return reviews
+    # def _preprocess_reviews(self, reviews: pd.DataFrame):
+    #     reviews.dropna(subset=["user_id", "reviews"], inplace=True)
+    #     reviews.drop(reviews[~reviews["reviews"].astype(bool)].index, inplace=True) # filter out empty review sets
+    #     reviews["item_id"] = reviews["reviews"].apply(lambda row: [review["item_id"] for review in row])
+    #     reviews["recommend"] = reviews["reviews"].apply(lambda row: [review["recommend"] for review in row])
+    #     reviews["reviews_count"] = reviews["reviews"].apply(len)
+    #     reviews = reviews.drop("reviews", axis=1)
+    #     reviews.sort_values("reviews_count", inplace=True)
+    #     reviews = reviews.reset_index(drop=True)
+    #     return reviews
     
     def _generate_item_features(self, items: pd.DataFrame):
         pass
@@ -104,13 +108,10 @@ class BaseRecommender(object):
             dict: a dict containing the recall@k and nDCG@k
         """
         recommendations = self.recommendations
-        gt_file = './data/ground_truth.parquet'
-        if not exists(gt_file):
-            generate_gt(gt_file)
             
         eval = recommendations.drop(recommendations[~recommendations['recommendations'].astype(bool)].index)  # drop all recommendations that are empty
-        gt = pd.read_parquet('./data/ground_truth.parquet')
-        eval = eval.merge(gt, on=['user_id'])
+        eval = eval.merge(self.test, left_index=True, right_index=True) #TODO: eval
+        eval.rename(columns={"item_id": "items"}) #TODO: fix properly
 
         results_dict = dict()
         # drop all rows with no items (nothing to compare against)
@@ -385,7 +386,8 @@ class ImprovedRecommender(BaseRecommender):
         """
         items = self.items
         
-        df = self._preprocess_reviews(parse_json(data_path, read_max=read_max))
+        # df = self._preprocess_reviews(parse_json(data_path, read_max=read_max))
+        df = self.train
         # df = parse_json(data_path) if read_max is None else parse_json(data_path, read_max=read_max)
         # df.drop(df[~df["reviews"].astype(bool)].index,inplace=True)  # filter out empty reviews
 
@@ -478,9 +480,9 @@ class PopBasedRecommender(BaseRecommender):
         pass
 
     def generate_recommendations(self, data_path: str, read_max=None) -> None:
-        # TODO: controleren of sommige items verschillende id's hebben, belangrijk voor pop based recommender
-        reviews = parse_json(data_path) if read_max is None else parse_json(data_path, read_max=read_max)
-        df = self._preprocess_reviews(reviews)
+        # reviews = parse_json(data_path) if read_max is None else parse_json(data_path, read_max=read_max)
+        # df = self._preprocess_reviews(reviews)
+        df = self.train
 
         n_game_pop = df["item_id"].explode()
         n_game_pop.dropna(inplace=True)
