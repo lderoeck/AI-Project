@@ -54,12 +54,12 @@ def parse_json(filename_python_json: str, read_max: int = -1) -> DataFrame:
 
 
 class BaseRecommender(object):
-    def __init__(self, items_path: str, train_path: str, test_path: str, validation_path: str) -> None:
-        items = self._preprocess_items(parse_json(items_path))
+    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str) -> None:
+        items = self._preprocess_items(pd.read_pickle(items_path))
         self.items = self._generate_item_features(items)
         self.train = pd.read_parquet(train_path)
         self.test = pd.read_parquet(test_path)
-        self.validation = pd.read_parquet(validation_path)
+        self.val = pd.read_parquet(val_path)
         self.recommendations = pd.DataFrame()
         
     def _preprocess_items(self, items: pd.DataFrame):
@@ -69,6 +69,11 @@ class BaseRecommender(object):
         items = items.reset_index(drop=True)
         # TODO: transform id to new id with dict
         return items
+    
+    def set_user_data(self, train_path: str, test_path: str, val_path: str) -> None:
+        self.train = pd.read_parquet(train_path)
+        self.test = pd.read_parquet(test_path)
+        self.val = pd.read_parquet(val_path)
     
     # def _preprocess_users(self, users: pd.DataFrame):
     #     users.dropna(subset=["user_id", "items"], inplace=True)
@@ -96,7 +101,7 @@ class BaseRecommender(object):
     def _generate_item_features(self, items: pd.DataFrame):
         pass
     
-    def evaluate(self, filename=None, qual_eval_folder=None, k=10) -> dict:
+    def evaluate(self, filename=None, qual_eval_folder=None, k=10, val=False) -> dict:
         """Evaluate the recommendations based on ground truth
 
         Args:
@@ -108,14 +113,16 @@ class BaseRecommender(object):
             dict: a dict containing the recall@k and nDCG@k
         """
         recommendations = self.recommendations
+        
+        gt = self.val if val else self.test
+        gt.rename(columns={"item_id": "items"}, inplace=True)
             
         eval = recommendations.drop(recommendations[~recommendations['recommendations'].astype(bool)].index)  # drop all recommendations that are empty
-        eval = eval.merge(self.test, left_index=True, right_index=True) #TODO: eval
-        eval.rename(columns={"item_id": "items"}) #TODO: fix properly
+        eval = eval.merge(gt, left_index=True, right_index=True)
 
         results_dict = dict()
         # drop all rows with no items (nothing to compare against)
-        eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
+        # eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
 
         if filename and qual_eval_folder:
             if not os.path.exists(qual_eval_folder):
@@ -126,11 +133,11 @@ class BaseRecommender(object):
         eval['recommendations'] = eval['recommendations'].apply(lambda recs: recs[:k])
             
         # Drop reviewed items from ground truth
-        eval['items'] = eval.apply(lambda row: list(set(row['items']).difference(set(row['item_id']))), axis=1)
-        eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
+        # eval['items'] = eval.apply(lambda row: list(set(row['items']).difference(set(row['item_id']))), axis=1)
+        # eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
         
         # compute HR@k
-        eval['HR@k'] = eval.apply(lambda row: int(any(rec in row['recommendations'] for rec in row['items'])), axis=1)
+        eval['HR@k'] = eval.apply(lambda row: int(any(item in row['recommendations'] for item in row['items'])), axis=1)
         results_dict[f'HR@{k}'] = eval['HR@k'].mean()
 
         # compute nDCG@k
@@ -154,7 +161,7 @@ class BaseRecommender(object):
     
     
 class ContentBasedRecommender(BaseRecommender):
-    def __init__(self, items_path: str, sparse: bool = True, distance_metric='minkowski', tfidf='default', use_feedback=True, normalize=True) -> None:
+    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, distance_metric='minkowski', tfidf='default', use_feedback=True, normalize=True) -> None:
         """Content based recommender
 
         Args:
@@ -188,7 +195,7 @@ class ContentBasedRecommender(BaseRecommender):
         elif distance_metric in KDTree.valid_metrics:
             algorithm = 'kd_tree'
         self.method = NearestNeighbors(n_neighbors=10, algorithm=algorithm, metric=distance_metric)
-        super(ContentBasedRecommender, self).__init__(items_path)
+        super(ContentBasedRecommender, self).__init__(items_path, train_path, test_path, val_path)
 
     def _generate_item_features(self, items: DataFrame) -> DataFrame:
         """Generates feature vector of items and appends to returned DataFrame
@@ -199,9 +206,8 @@ class ContentBasedRecommender(BaseRecommender):
         Returns:
             DataFrame: dataframe with feature vector appended
         """
-        items.drop(["publisher", "app_name", "title", "url", "release_date", "discount_price", "reviews_url",
-                    "price", "early_access", "sentiment", "metascore"], axis=1, inplace=True)
         columns = ["genres", "tags"]
+        items = items.filter(columns + ['id'])
         # Combine genres, tags and specs into one column
         for col in columns:
             items[col] = items[col].fillna("").apply(set)
@@ -309,11 +315,11 @@ class ContentBasedRecommender(BaseRecommender):
 
 
 class ImprovedRecommender(BaseRecommender):
-    def __init__(self, items_path: str = './data/steam_games.json', sparse: bool = True, dim_red=None, tfidf='default', use_feedback=True, normalize=False) -> None:
+    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, dim_red=None, tfidf='default', use_feedback=True, normalize=False) -> None:
         """Content based recommender
 
         Args:
-            items_path (str): Path to json file containing the items
+            items_path (str): Path to pickle file containing the items
             sparse (bool, optional): If recommender uses a sparse representation. Defaults to True.
             distance_metric (str, optional): Which distance metric to use. Defaults to 'minkowski'.
             dim_red ([type], optional): Which dimensionality reduction to use. Defaults to None.
@@ -342,7 +348,7 @@ class ImprovedRecommender(BaseRecommender):
         algorithm = 'auto'
         self.method = NearestNeighbors(n_neighbors=10, algorithm=algorithm, metric='cosine')
         
-        super(ImprovedRecommender, self).__init__(items_path)
+        super(ImprovedRecommender, self).__init__(items_path, train_path, test_path, val_path)
 
     def _generate_item_features(self, items: DataFrame) -> DataFrame:
         """Generates feature vector of items and appends to returned DataFrame
@@ -353,9 +359,8 @@ class ImprovedRecommender(BaseRecommender):
         Returns:
             DataFrame: dataframe with feature vector appended
         """
-        items.drop(["publisher", "app_name", "title", "url", "release_date", "discount_price", "reviews_url",
-                    "price", "early_access", "sentiment", "metascore"], axis=1, inplace=True)
         columns = ["genres", "tags", "specs", "developer"]
+        items = items.filter(columns + ['id'])
         # items["developer"] = items["developer"].apply(lambda my_str: my_str.split(','))
         # Combine genres, tags and specs into one column
         for col in columns:
@@ -376,7 +381,7 @@ class ImprovedRecommender(BaseRecommender):
 
         return items
 
-    def generate_recommendations(self, data_path: str, amount=10, read_max=None) -> None:
+    def generate_recommendations(self, amount=10, read_max=None) -> None:
         """Generate recommendations based on user review data
 
         Args:
@@ -387,7 +392,7 @@ class ImprovedRecommender(BaseRecommender):
         items = self.items
         
         # df = self._preprocess_reviews(parse_json(data_path, read_max=read_max))
-        df = self.train
+        df = self.train.iloc[:read_max].copy(deep=True) if read_max else self.train
         # df = parse_json(data_path) if read_max is None else parse_json(data_path, read_max=read_max)
         # df.drop(df[~df["reviews"].astype(bool)].index,inplace=True)  # filter out empty reviews
 
@@ -428,12 +433,10 @@ class ImprovedRecommender(BaseRecommender):
         recommendation_list = []
         for index, row in tqdm(df.iterrows()):
             # Compute uservector and recommendations for all users
-            reviewed_items = items[items["id"].isin(row["item_id"])]
+            reviewed_items = items.iloc[row["item_id"],:]
 
             # If user has no reviews, no usable data is available
-            if reviewed_items.empty:
-                recommendation_list.append([])
-                continue
+            assert not reviewed_items.empty
 
             user_vector = None
             if self.use_feedback:
@@ -464,7 +467,7 @@ class ImprovedRecommender(BaseRecommender):
                 gen_am += amount - len(recommendations)
                 nns = nbrs.kneighbors(user_vector, gen_am, return_distance=True)
                 # Filter out items in reviews
-                recommendations = list(filter(lambda id: id not in row["item_id"], [items.loc[item]["id"] for item in nns[1][0]]))
+                recommendations = list(filter(lambda id: id not in row["item_id"], nns[1][0]))
 
             recommendation_list.append(recommendations[:amount])
 
@@ -476,13 +479,15 @@ if __name__ == "__main__":
     pass
 
 class PopBasedRecommender(BaseRecommender):
-    def __init__(self) -> None:
-        pass
+    def __init__(self, train_path: str, test_path: str, val_path: str) -> None:
+        self.train = pd.read_parquet(train_path)
+        self.test = pd.read_parquet(test_path)
+        self.val = pd.read_parquet(val_path)
 
-    def generate_recommendations(self, data_path: str, read_max=None) -> None:
+    def generate_recommendations(self, read_max=None) -> None:
         # reviews = parse_json(data_path) if read_max is None else parse_json(data_path, read_max=read_max)
         # df = self._preprocess_reviews(reviews)
-        df = self.train
+        df = self.train.iloc[:read_max].copy(deep=True) if read_max else self.train
 
         n_game_pop = df["item_id"].explode()
         n_game_pop.dropna(inplace=True)
