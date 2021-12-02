@@ -129,9 +129,12 @@ dmypy.json
 .pyre/
 
 /data/
+/deadline1/data/
 /evaluation/*.csv
 /evaluation/*.parquet
 /evaluation/source/*.csv
 /evaluation/source/*.parquet
+/deadline1/evaluation/source/*.csv
+/deadline1/evaluation/source/*.parquet
 /*.zip
 /evaluate_csv.py
