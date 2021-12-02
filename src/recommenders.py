@@ -41,9 +41,13 @@ class BaseRecommender(object):
         items["price"] = items["price"].apply(lambda p: np.float32(p) if re.match(r"\d+(?:.\d{2})?", str(p)) else 0)
         items["metascore"] = items["metascore"].apply(lambda m: m if m != "NA" else np.nan)
         items["developer"].fillna(value='', inplace=True)
-        items["developer"] = items["developer"].apply(lambda my_str: my_str.split(','))
+        items["developer"] = items["developer"].apply(lambda my_str: my_str.lower().split(','))
         items["publisher"].fillna(value='', inplace=True)
-        items["publisher"] = items["publisher"].apply(lambda my_str: my_str.split(','))
+        items["publisher"] = items["publisher"].apply(lambda my_str: my_str.lower().split(','))
+        items["early_access"] = items["early_access"].apply(lambda x: ["earlyaccess"] if x else [])
+        items["specs"] = items["specs"].apply(lambda l: [re.subn(r"[^a-z0-9]", "", my_str.lower())[0] for my_str in l])
+        items["tags"] = items["tags"].apply(lambda l: [re.subn(r"[^a-z0-9]", "", my_str.lower())[0] for my_str in l])
+        items["genres"] = items["genres"].apply(lambda l: [re.subn(r"[^a-z0-9]", "", my_str.lower())[0] for my_str in l])
         return items
     
     def set_user_data(self, train_path: str, test_path: str, val_path: str) -> None:
