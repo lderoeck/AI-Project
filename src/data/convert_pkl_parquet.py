@@ -14,7 +14,6 @@ def main(base_path: str) -> None:
         data = pd.read_pickle(f)
         for part in ['train', 'val', 'test']:
             part_file = unpack_split(data, part).applymap(lambda x: x.tolist())
-            print(type(part_file.iloc[0]['item_id']))
             print(f"{f} -> {f[:-4]}_{part}.parquet")
             part_file.to_parquet(f"{f[:-4]}_{part}.parquet")
 
