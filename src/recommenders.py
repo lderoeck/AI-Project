@@ -161,161 +161,7 @@ class BaseRecommender(object):
     
     
 class ContentBasedRecommender(BaseRecommender):
-    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, distance_metric='minkowski', tfidf='default', use_feedback=True, normalize=True) -> None:
-        """Content based recommender
-
-        Args:
-            items_path (str): Path to json file containing the items
-            sparse (bool, optional): If recommender uses a sparse representation. Defaults to True.
-            distance_metric (str, optional): Which distance metric to use. Defaults to 'minkowski'.
-            tfidf (str, optional): Which tf-idf method to use. Defaults to 'default'.
-            use_feedback (bool, optional): Consider positive/negative reviews. Defaults to True.
-        """
-        self.sparse = sparse
-        self.use_feedback = use_feedback
-        self.normalize = normalize
-        self.recommendations = None
-        self.normalizer = Normalizer(copy=False)
-        
-        # Select tf-idf method to use
-        self.tfidf = None
-        if tfidf == 'default':
-            self.tfidf = TfidfTransformer(smooth_idf=False, sublinear_tf=False)
-        elif tfidf == 'smooth':
-            self.tfidf = TfidfTransformer(smooth_idf=True, sublinear_tf=False)
-        elif tfidf == 'sublinear':
-            self.tfidf = TfidfTransformer(smooth_idf=False, sublinear_tf=True)
-        elif tfidf == 'smooth_sublinear':
-            self.tfidf = TfidfTransformer(smooth_idf=True, sublinear_tf=True)
-
-        # Select algorithm to use for neighbour computation
-        algorithm = 'auto'
-        if distance_metric in BallTree.valid_metrics:
-            algorithm = 'ball_tree'
-        elif distance_metric in KDTree.valid_metrics:
-            algorithm = 'kd_tree'
-        self.method = NearestNeighbors(n_neighbors=10, algorithm=algorithm, metric=distance_metric)
-        super(ContentBasedRecommender, self).__init__(items_path, train_path, test_path, val_path)
-
-    def _generate_item_features(self, items: DataFrame) -> DataFrame:
-        """Generates feature vector of items and appends to returned DataFrame
-
-        Args:
-            items (DataFrame): dataframe containing the items
-
-        Returns:
-            DataFrame: dataframe with feature vector appended
-        """
-        columns = ["genres", "tags"]
-        items = items.filter(columns + ['id'])
-        # Combine genres, tags and specs into one column
-        for col in columns:
-            items[col] = items[col].fillna("").apply(set)
-        items["tags"] = items.apply(lambda x: list(
-            set.union(*([x[col] for col in columns]))), axis=1)
-        columns.remove("tags")
-        items = items.drop(columns, axis=1)
-
-        # Compute one-hot encoded vector of tags
-        mlb = MultiLabelBinarizer(sparse_output=self.sparse)
-        if self.sparse:
-            items = items.join(DataFrame.sparse.from_spmatrix(mlb.fit_transform(items.pop(
-                "tags")), index=items.index, columns=["tag_" + c for c in mlb.classes_]))
-        else:
-            items = items.join(DataFrame(mlb.fit_transform(items.pop(
-                "tags")), index=items.index, columns=["tag_" + c for c in mlb.classes_]))
-
-        return items
-
-    def generate_recommendations(self, data_path: str, amount=10, read_max=None) -> None:
-        """Generate recommendations based on user review data
-
-        Args:
-            data_path (str): User review data
-            amount (int, optional): Amount of times to recommend. Defaults to 10.
-            read_max (int, optional): Max amount of users to read. Defaults to None.
-        """
-        items = self.items
-        df = parse_json(data_path) if read_max is None else parse_json(data_path, read_max=read_max)
-        df.drop(df[~df["reviews"].astype(bool)].index,inplace=True)  # filter out empty reviews
-
-        # Process reviews
-        df = df.explode("reviews", ignore_index=True)
-        df = pd.concat([df.drop(["reviews", "user_url"], axis=1), pd.json_normalize(df.reviews)], 
-                axis=1).drop(["funny", "helpful", "posted", "last_edited", "review"], axis=1)
-        df = df.groupby("user_id").agg(list).reset_index()
-
-        # Drop id so only feature vector is left
-        if self.sparse:
-            X = scipy.sparse.csr_matrix(items.drop(["id"], axis=1).values)
-        else:
-            X = np.array(items.drop(["id"], axis=1).values)
-
-        if self.tfidf:
-            # Use tf-idf
-            X = self.tfidf.fit_transform(X)
-            
-        if self.normalize:
-            X = self.normalizer.fit_transform(X)
-
-        # Combine transformed feature vector back into items
-        if self.sparse:
-            items = pd.concat([items["id"], DataFrame.sparse.from_spmatrix(X)], axis=1)
-        else:
-            items = pd.concat([items["id"], DataFrame(X)], axis=1)
-
-        self.method.set_params(n_neighbors=amount)
-        nbrs = self.method.fit(X)
-
-        recommendation_list = []
-        for index, row in tqdm(df.iterrows()):
-            # Compute uservector and recommendations for all users
-            reviewed_items = items[items["id"].isin(row["item_id"])]
-
-            # If user has no reviews, no usable data is available
-            if reviewed_items.empty:
-                recommendation_list.append([])
-                continue
-
-            user_vector = None
-            if self.use_feedback:
-                # Compute average taking into account if review is positive/negative
-                reviewed_item_ids = np.array(row["item_id"])
-                recommend = np.array(row["recommend"])
-
-                positive_ids = reviewed_item_ids[recommend]
-                negative_ids = reviewed_item_ids[~recommend]
-
-                positive_values = reviewed_items[reviewed_items["id"].isin(positive_ids)].drop(["id"], axis=1).sum()
-                negative_values = reviewed_items[reviewed_items["id"].isin(negative_ids)].drop(["id"], axis=1).sum()
-
-                user_vector = positive_values.sub(negative_values).div(reviewed_items.shape[0])
-            else:
-                # Computing average, assuming all reviews are indication of interest
-                user_vector = reviewed_items.drop(["id"], axis=1).mean()
-
-            if self.normalize:
-                user_vector = self.normalizer.transform([user_vector.to_numpy()])
-            else:
-                user_vector = [user_vector.to_numpy()]
-            # Start overhead of 20%
-            gen_am = amount//5
-            recommendations = []
-            while len(recommendations) < amount:
-                # calculate amount of items to be generated
-                gen_am += amount - len(recommendations)
-                nns = nbrs.kneighbors(user_vector, gen_am, return_distance=True)
-                # Filter out items in reviews
-                recommendations = list(filter(lambda id: id not in row["item_id"], [items.loc[item]["id"] for item in nns[1][0]]))
-
-            recommendation_list.append(recommendations[:amount])
-
-        df["recommendations"] = recommendation_list
-        self.recommendations = df
-
-
-class ImprovedRecommender(BaseRecommender):
-    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, dim_red=None, tfidf='default', use_feedback=True, normalize=False) -> None:
+    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, tfidf='default', normalize=False) -> None:
         """Content based recommender
 
         Args:
@@ -327,8 +173,6 @@ class ImprovedRecommender(BaseRecommender):
             use_feedback (bool, optional): Consider positive/negative reviews. Defaults to True.
         """
         self.sparse = sparse
-        self.dim_red = dim_red
-        self.use_feedback = use_feedback
         self.normalize = normalize
         self.recommendations = None
         self.normalizer = Normalizer(copy=False)
@@ -348,7 +192,12 @@ class ImprovedRecommender(BaseRecommender):
         algorithm = 'auto'
         self.method = NearestNeighbors(n_neighbors=10, algorithm=algorithm, metric='cosine')
         
-        super(ImprovedRecommender, self).__init__(items_path, train_path, test_path, val_path)
+        super(ContentBasedRecommender, self).__init__(items_path, train_path, test_path, val_path)
+        
+    def _process_item_features(self, items):
+        columns = ["genres", "tags"]
+        items = items.filter(columns)
+        return items
 
     def _generate_item_features(self, items: DataFrame) -> DataFrame:
         """Generates feature vector of items and appends to returned DataFrame
@@ -359,10 +208,9 @@ class ImprovedRecommender(BaseRecommender):
         Returns:
             DataFrame: dataframe with feature vector appended
         """
-        columns = ["genres", "tags", "specs", "developer"]
-        items = items.filter(columns + ['id'])
-        # items["developer"] = items["developer"].apply(lambda my_str: my_str.split(','))
-        # Combine genres, tags and specs into one column
+        items = self._process_item_features(items)
+        # Combine all features into one column
+        columns = items.columns.tolist()
         for col in columns:
             items[col] = items[col].fillna("").apply(set)
         items["tags"] = items.apply(lambda x: list(
@@ -390,23 +238,105 @@ class ImprovedRecommender(BaseRecommender):
             read_max (int, optional): Max amount of users to read. Defaults to None.
         """
         items = self.items
-        
-        # df = self._preprocess_reviews(parse_json(data_path, read_max=read_max))
         df = self.train.iloc[:read_max].copy(deep=True) if read_max else self.train
-        # df = parse_json(data_path) if read_max is None else parse_json(data_path, read_max=read_max)
-        # df.drop(df[~df["reviews"].astype(bool)].index,inplace=True)  # filter out empty reviews
-
-        # # Process reviews
-        # df = df.explode("reviews", ignore_index=True)
-        # df = pd.concat([df.drop(["reviews", "user_url"], axis=1), pd.json_normalize(df.reviews)], 
-        #         axis=1).drop(["funny", "helpful", "posted", "last_edited", "review"], axis=1)
-        # df = df.groupby("user_id").agg(list).reset_index()
 
         # Drop id so only feature vector is left
         if self.sparse:
-            X = scipy.sparse.csr_matrix(items.drop(["id"], axis=1).values)
+            X = scipy.sparse.csr_matrix(items.values)
         else:
-            X = np.array(items.drop(["id"], axis=1).values)
+            X = np.array(items.values)
+
+        if self.tfidf:
+            # Use tf-idf
+            X = self.tfidf.fit_transform(X)
+            
+        if self.normalize:
+            X = self.normalizer.fit_transform(X)
+
+        # Transformed feature vector back into items
+        if self.sparse:
+            items = DataFrame.sparse.from_spmatrix(X)
+        else:
+            items = DataFrame(X)
+
+        self.method.set_params(n_neighbors=amount)
+        nbrs = self.method.fit(X)
+
+        recommendation_list = []
+        for index, row in tqdm(df.iterrows()):
+            # Compute uservector and recommendations for all users
+            owned_items = items.iloc[row["item_id"],:]
+
+            # If user has no items, no usable data is available
+            assert not owned_items.empty
+
+            # Computing average, assuming all user items are indication of interest
+            user_vector = owned_items.mean()
+
+            if self.normalize:
+                user_vector = self.normalizer.transform([user_vector.to_numpy()])
+            else:
+                user_vector = [user_vector.to_numpy()]
+            # Start overhead of 20%
+            gen_am = amount//5
+            recommendations = []
+            while len(recommendations) < amount:
+                # calculate amount of items to be generated
+                gen_am += amount - len(recommendations)
+                nns = nbrs.kneighbors(user_vector, gen_am, return_distance=True)
+                # Filter out items in training set
+                recommendations = list(filter(lambda id: id not in row["item_id"], nns[1][0]))
+
+            recommendation_list.append(recommendations[:amount])
+
+        df["recommendations"] = recommendation_list
+        self.recommendations = df
+
+
+
+class ImprovedRecommender(ContentBasedRecommender):
+    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, dim_red=None, tfidf='default', use_feedback=True, normalize=False) -> None:
+        """Content based recommender
+
+        Args:
+            items_path (str): Path to pickle file containing the items
+            sparse (bool, optional): If recommender uses a sparse representation. Defaults to True.
+            distance_metric (str, optional): Which distance metric to use. Defaults to 'minkowski'.
+            dim_red ([type], optional): Which dimensionality reduction to use. Defaults to None.
+            tfidf (str, optional): Which tf-idf method to use. Defaults to 'default'.
+            use_feedback (bool, optional): Consider positive/negative reviews. Defaults to True.
+        """
+        self.dim_red = dim_red
+        self.use_feedback = use_feedback
+
+        super(ImprovedRecommender, self).__init__(items_path, train_path, test_path, val_path, sparse, tfidf, normalize)
+        
+    def _process_item_features(self, items):
+        columns = ["genres", "tags", "specs", "developer", "publisher"]
+        items = items.filter(columns)
+        items["developer"].fillna(value='', inplace=True)
+        items["publisher"].fillna(value='', inplace=True)
+        items["developer"] = items["developer"].apply(lambda my_str: my_str.split(','))
+        items["publisher"] = items["publisher"].apply(lambda my_str: my_str.split(','))
+        return items
+
+    def generate_recommendations(self, amount=10, read_max=None) -> None:
+        """Generate recommendations based on user review data
+
+        Args:
+            data_path (str): User review data
+            amount (int, optional): Amount of times to recommend. Defaults to 10.
+            read_max (int, optional): Max amount of users to read. Defaults to None.
+        """
+        items = self.items
+        
+        df = self.train.iloc[:read_max].copy(deep=True) if read_max else self.train
+
+        # Drop id so only feature vector is left
+        if self.sparse:
+            X = scipy.sparse.csr_matrix(items.values)
+        else:
+            X = np.array(items.values)
 
         if self.tfidf:
             # Use tf-idf
@@ -423,9 +353,9 @@ class ImprovedRecommender(BaseRecommender):
         if self.sparse and self.dim_red:
             warnings.warn("Sparse was set to 'True' but dimensionality reduction is used, using dense matrix representation instead.", RuntimeWarning)
         if self.sparse and self.dim_red is None:
-            items = pd.concat([items["id"], DataFrame.sparse.from_spmatrix(X)], axis=1)
+            items = DataFrame.sparse.from_spmatrix(X)
         else:
-            items = pd.concat([items["id"], DataFrame(X)], axis=1)
+            items = DataFrame(X)
 
         self.method.set_params(n_neighbors=amount)
         nbrs = self.method.fit(X)
@@ -440,20 +370,11 @@ class ImprovedRecommender(BaseRecommender):
 
             user_vector = None
             if self.use_feedback:
-                # Compute average taking into account if review is positive/negative
-                reviewed_item_ids = np.array(row["item_id"])
-                recommend = np.array(row["recommend"])
-
-                positive_ids = reviewed_item_ids[recommend]
-                negative_ids = reviewed_item_ids[~recommend]
-
-                positive_values = reviewed_items[reviewed_items["id"].isin(positive_ids)].drop(["id"], axis=1).sum()
-                negative_values = reviewed_items[reviewed_items["id"].isin(negative_ids)].drop(["id"], axis=1).sum()
-
-                user_vector = positive_values.sub(negative_values).div(reviewed_items.shape[0])
+                # TODO implement!
+                raise NotImplementedError
             else:
                 # Computing average, assuming all reviews are indication of interest
-                user_vector = reviewed_items.drop(["id"], axis=1).mean()
+                user_vector = reviewed_items.mean()
 
             if self.normalize:
                 user_vector = self.normalizer.transform([user_vector.to_numpy()])
