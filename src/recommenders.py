@@ -1,128 +1,91 @@
-from ast import literal_eval
+import os
+import re
+import warnings
 
 import numpy as np
 import pandas as pd
 import scipy
 from pandas import DataFrame
-from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.neighbors import BallTree, KDTree, NearestNeighbors
 from sklearn.preprocessing import MultiLabelBinarizer, Normalizer
 from tqdm import tqdm
-import re
-import warnings
-from os.path import exists
-import os
-
-# def generate_gt(target: str) -> None:
-#     """Generates ground truth data to target
-
-#     Args:
-#         target (str): Path to file destination
-#     """
-#     gt = parse_json("./data/australian_users_items.json")
-#     gt['items'] = gt['items'].apply(lambda items: [item['item_id'] for item in items])
-#     gt = gt.drop(['user_url'], axis=1)
-#     gt.to_parquet(target)
-
-def parse_json(filename_python_json: str, read_max: int = -1) -> DataFrame:
-    """Parses json file into a DataFrame
-
-    Args:
-        filename_python_json (str): Path to json file
-        read_max (int, optional): Max amount of lines to read from json file. Defaults to -1.
-
-    Returns:
-        DataFrame: DataFrame from parsed json
-    """
-    with open(filename_python_json, "r", encoding="utf-8") as f:
-        # parse json
-        parse_data = []
-        # tqdm is for showing progress bar, always good when processing large amounts of data
-        for line in tqdm(f):
-            # load python nested datastructure
-            parsed_result = literal_eval(line)
-            parse_data.append(parsed_result)
-            if read_max != -1 and len(parse_data) > read_max:
-                print(f"Break reading after {read_max} records")
-                break
-        print(f"Reading {len(parse_data)} rows.")
-
-        # create dataframe
-        df = DataFrame.from_dict(parse_data)
-        return df
 
 
 class BaseRecommender(object):
     def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str) -> None:
+        """Base recommender class
+
+        Args:
+            items_path (str): Path to pickle file containing the items
+            train_path (str): Path to train data parquet file
+            test_path (str): Path to test data parquet file
+            val_path (str): Path to validation data parquet file
+        """
         items = self._preprocess_items(pd.read_pickle(items_path))
         self.items = self._generate_item_features(items)
         self.train = pd.read_parquet(train_path)
         self.test = pd.read_parquet(test_path)
         self.val = pd.read_parquet(val_path)
-        self.recommendations = pd.DataFrame()
+        self.recommendations = DataFrame()
         
-    def _preprocess_items(self, items: pd.DataFrame):
-        items.dropna(subset=["id"], inplace=True)
+    def _preprocess_items(self, items: DataFrame) -> DataFrame:
+        """Applies preprocessing to the items
+
+        Args:
+            items (DataFrame): Dataframe containing all items with their metadata
+
+        Returns:
+            DataFrame: Sanitised item metadata
+        """
         items["price"] = items["price"].apply(lambda p: np.float32(p) if re.match(r"\d+(?:.\d{2})?", str(p)) else 0)
         items["metascore"] = items["metascore"].apply(lambda m: m if m != "NA" else np.nan)
-        items = items.reset_index(drop=True)
-        # TODO: transform id to new id with dict
+        items["developer"].fillna(value='', inplace=True)
+        items["developer"] = items["developer"].apply(lambda my_str: my_str.split(','))
+        items["publisher"].fillna(value='', inplace=True)
+        items["publisher"] = items["publisher"].apply(lambda my_str: my_str.split(','))
         return items
     
     def set_user_data(self, train_path: str, test_path: str, val_path: str) -> None:
+        """Read new train, test and val data
+
+        Args:
+            train_path (str): Path to train parquet file
+            test_path (str): Path to test parquet file
+            val_path (str): Path to validation parquet file
+        """
         self.train = pd.read_parquet(train_path)
         self.test = pd.read_parquet(test_path)
         self.val = pd.read_parquet(val_path)
     
-    # def _preprocess_users(self, users: pd.DataFrame):
-    #     users.dropna(subset=["user_id", "items"], inplace=True)
-    #     users.sort_values("items_count", inplace=True)
-    #     users.drop(users[users["items_count"] < 3].index, inplace=True)
-    #     users.drop(users[users["items_count"] > 1024].index, inplace=True)
-    #     users["item_id"] = users["items"].apply(lambda row: [game["item_id"] for game in row])
-    #     users["playtime_forever"] = users["items"].apply(lambda row: [game["playtime_forever"] for game in row])
-    #     users["playtime_2weeks"] = users["items"].apply(lambda row: [game["playtime_2weeks"] for game in row])
-    #     users = users.drop("items", axis=1)
-    #     users = users.reset_index(drop=True)
-    #     return users
-    
-    # def _preprocess_reviews(self, reviews: pd.DataFrame):
-    #     reviews.dropna(subset=["user_id", "reviews"], inplace=True)
-    #     reviews.drop(reviews[~reviews["reviews"].astype(bool)].index, inplace=True) # filter out empty review sets
-    #     reviews["item_id"] = reviews["reviews"].apply(lambda row: [review["item_id"] for review in row])
-    #     reviews["recommend"] = reviews["reviews"].apply(lambda row: [review["recommend"] for review in row])
-    #     reviews["reviews_count"] = reviews["reviews"].apply(len)
-    #     reviews = reviews.drop("reviews", axis=1)
-    #     reviews.sort_values("reviews_count", inplace=True)
-    #     reviews = reviews.reset_index(drop=True)
-    #     return reviews
-    
-    def _generate_item_features(self, items: pd.DataFrame):
-        pass
-    
-    def evaluate(self, filename=None, qual_eval_folder=None, k=10, val=False) -> dict:
-        """Evaluate the recommendations based on ground truth
+    def _generate_item_features(self, items: DataFrame):
+        """Generates the item representations
 
         Args:
-            recommendations (pd.DataFrame): Dataframe consisting of user_id and their respective recommendations
-            filename ([type], optional): filename for qualitative evaluation. Defaults to None.
-            qual_eval_folder ([type], optional): output folder for qualitative evaluation. Defaults to None.
+            items (DataFrame): Dataframe containing only relevant metadata
+        """
+        pass
+
+    def evaluate(self, filename=None, qual_eval_folder=None, k=10, val=False) -> dict:
+        """Evaluate the recommendations
+
+        Args:
+            filename (str, optional): filename for qualitative evaluation. Defaults to None.
+            qual_eval_folder (str, optional): output folder for qualitative evaluation. Defaults to None.
+            k (int, optional): Amount of recommendations to consider. Defaults to 10.
+            val (bool, optional): Wether or not to use test or validation dataset. Defaults to False.
 
         Returns:
-            dict: a dict containing the recall@k and nDCG@k
+            dict: a dict containing the hitrate@k, recall@k and nDCG@k
         """
-        recommendations = self.recommendations
         
         gt = self.val if val else self.test
         gt.rename(columns={"item_id": "items"}, inplace=True)
             
-        eval = recommendations.drop(recommendations[~recommendations['recommendations'].astype(bool)].index)  # drop all recommendations that are empty
+        eval = self.recommendations
         eval = eval.merge(gt, left_index=True, right_index=True)
 
         results_dict = dict()
-        # drop all rows with no items (nothing to compare against)
-        # eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
 
         if filename and qual_eval_folder:
             if not os.path.exists(qual_eval_folder):
@@ -130,11 +93,7 @@ class BaseRecommender(object):
             eval.to_parquet(qual_eval_folder + filename + '.parquet')
             
         # Cap to k recommendations
-        eval['recommendations'] = eval['recommendations'].apply(lambda recs: recs[:k])
-            
-        # Drop reviewed items from ground truth
-        # eval['items'] = eval.apply(lambda row: list(set(row['items']).difference(set(row['item_id']))), axis=1)
-        # eval.drop(eval[~eval['items'].astype(bool)].index, inplace=True)
+        eval['recommendations'] = eval['recommendations'].apply(lambda rec: rec[:k])
         
         # compute HR@k
         eval['HR@k'] = eval.apply(lambda row: int(any(item in row['recommendations'] for item in row['items'])), axis=1)
@@ -151,9 +110,11 @@ class BaseRecommender(object):
         eval['recall@k'] = eval.apply(lambda row: len(row['recommendations'].intersection(row['items']))/len(row['items']), axis=1)
         results_dict[f'recall@{k}'] = eval['recall@k'].mean()
 
+        # compute ideal recall@k
         eval['ideal_recall@k'] = eval.apply(lambda row: min(len(row['items']), len(row["recommendations"]))/len(row['items']), axis=1)
         results_dict[f'ideal_recall@{k}'] = eval['ideal_recall@k'].mean()
         
+        # compute normalised recall@k
         eval['nRecall@k'] = eval.apply(lambda row: row['recall@k']/row['ideal_recall@k'], axis=1)
         results_dict[f'nRecall@{k}'] = eval['nRecall@k'].mean()
 
@@ -166,12 +127,14 @@ class ContentBasedRecommender(BaseRecommender):
 
         Args:
             items_path (str): Path to pickle file containing the items
-            sparse (bool, optional): If recommender uses a sparse representation. Defaults to True.
-            distance_metric (str, optional): Which distance metric to use. Defaults to 'minkowski'.
-            dim_red ([type], optional): Which dimensionality reduction to use. Defaults to None.
+            train_path (str): Path to train data parquet file
+            test_path (str): Path to test data parquet file
+            val_path (str): Path to validation data parquet file
+            sparse (bool, optional): If sparse representation should be used. Defaults to True.
             tfidf (str, optional): Which tf-idf method to use. Defaults to 'default'.
-            use_feedback (bool, optional): Consider positive/negative reviews. Defaults to True.
+            normalize (bool, optional): If normalization should be used. Defaults to False.
         """
+        
         self.sparse = sparse
         self.normalize = normalize
         self.recommendations = None
@@ -194,7 +157,15 @@ class ContentBasedRecommender(BaseRecommender):
         
         super(ContentBasedRecommender, self).__init__(items_path, train_path, test_path, val_path)
         
-    def _process_item_features(self, items):
+    def _process_item_features(self, items: DataFrame) -> DataFrame:
+        """Processes the item metadata for feature generation
+
+        Args:
+            items (DataFrame): Dataframe containing items metadata
+
+        Returns:
+            DataFrame: Dataframe containing only relevant data for feature generation
+        """
         columns = ["genres", "tags"]
         items = items.filter(columns)
         return items
@@ -233,7 +204,6 @@ class ContentBasedRecommender(BaseRecommender):
         """Generate recommendations based on user review data
 
         Args:
-            data_path (str): User review data
             amount (int, optional): Amount of times to recommend. Defaults to 10.
             read_max (int, optional): Max amount of users to read. Defaults to None.
         """
@@ -295,16 +265,19 @@ class ContentBasedRecommender(BaseRecommender):
 
 
 class ImprovedRecommender(ContentBasedRecommender):
-    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, dim_red=None, tfidf='default', use_feedback=True, normalize=False) -> None:
-        """Content based recommender
+    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, dim_red=None, tfidf='default', use_feedback:bool=True, normalize:bool=False) -> None:
+        """Improved content based recommender
 
         Args:
             items_path (str): Path to pickle file containing the items
-            sparse (bool, optional): If recommender uses a sparse representation. Defaults to True.
-            distance_metric (str, optional): Which distance metric to use. Defaults to 'minkowski'.
-            dim_red ([type], optional): Which dimensionality reduction to use. Defaults to None.
+            train_path (str): Path to train data parquet file
+            test_path (str): Path to test data parquet file
+            val_path (str): Path to validation data parquet file
+            sparse (bool, optional): If sparse representation should be used. Defaults to True.
+            dim_red (Object, optional): Which dimensionality reduction method to use. Defaults to None.
             tfidf (str, optional): Which tf-idf method to use. Defaults to 'default'.
-            use_feedback (bool, optional): Consider positive/negative reviews. Defaults to True.
+            use_feedback(bool, optional): If feedback weighing should be used. Defaults to True.
+            normalize (bool, optional): If normalization should be used. Defaults to False.
         """
         self.dim_red = dim_red
         self.use_feedback = use_feedback
@@ -312,19 +285,22 @@ class ImprovedRecommender(ContentBasedRecommender):
         super(ImprovedRecommender, self).__init__(items_path, train_path, test_path, val_path, sparse, tfidf, normalize)
         
     def _process_item_features(self, items):
+        """Processes the item metadata for feature generation
+
+        Args:
+            items (DataFrame): Dataframe containing items metadata
+
+        Returns:
+            DataFrame: Dataframe containing only relevant data for feature generation
+        """
         columns = ["genres", "tags", "specs", "developer", "publisher"]
         items = items.filter(columns)
-        items["developer"].fillna(value='', inplace=True)
-        items["publisher"].fillna(value='', inplace=True)
-        items["developer"] = items["developer"].apply(lambda my_str: my_str.split(','))
-        items["publisher"] = items["publisher"].apply(lambda my_str: my_str.split(','))
         return items
 
     def generate_recommendations(self, amount=10, read_max=None) -> None:
         """Generate recommendations based on user review data
 
         Args:
-            data_path (str): User review data
             amount (int, optional): Amount of times to recommend. Defaults to 10.
             read_max (int, optional): Max amount of users to read. Defaults to None.
         """
@@ -395,19 +371,25 @@ class ImprovedRecommender(ContentBasedRecommender):
         df["recommendations"] = recommendation_list
         self.recommendations = df
 
-
-if __name__ == "__main__":
-    pass
-
 class PopBasedRecommender(BaseRecommender):
     def __init__(self, train_path: str, test_path: str, val_path: str) -> None:
+        """Popularity based recommender
+
+        Args:
+            train_path (str): Path to train data parquet file
+            test_path (str): Path to test data parquet file
+            val_path (str): Path to validation data parquet file
+        """
         self.train = pd.read_parquet(train_path)
         self.test = pd.read_parquet(test_path)
         self.val = pd.read_parquet(val_path)
 
     def generate_recommendations(self, read_max=None) -> None:
-        # reviews = parse_json(data_path) if read_max is None else parse_json(data_path, read_max=read_max)
-        # df = self._preprocess_reviews(reviews)
+        """Generates recommendations based on popularity of the items
+
+        Args:
+            read_max (int, optional): Max amount of users to read. Defaults to None.
+        """
         df = self.train.iloc[:read_max].copy(deep=True) if read_max else self.train
 
         n_game_pop = df["item_id"].explode()
