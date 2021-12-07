@@ -269,7 +269,7 @@ class ContentBasedRecommender(BaseRecommender):
 
 
 class ImprovedRecommender(ContentBasedRecommender):
-    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, dim_red=None, tfidf='default', use_feedback:bool=True, normalize:bool=False) -> None:
+    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, reviews_path: str, sparse: bool = True, dim_red=None, tfidf='default', use_feedback:bool=True, normalize:bool=False) -> None:
         """Improved content based recommender
 
         Args:
@@ -277,6 +277,7 @@ class ImprovedRecommender(ContentBasedRecommender):
             train_path (str): Path to train data parquet file
             test_path (str): Path to test data parquet file
             val_path (str): Path to validation data parquet file
+            reviews_path (str): Path to reviews parquet file
             sparse (bool, optional): If sparse representation should be used. Defaults to True.
             dim_red (Object, optional): Which dimensionality reduction method to use. Defaults to None.
             tfidf (str, optional): Which tf-idf method to use. Defaults to 'default'.
@@ -285,6 +286,7 @@ class ImprovedRecommender(ContentBasedRecommender):
         """
         self.dim_red = dim_red
         self.use_feedback = use_feedback
+        self.reviews = pd.read_parquet(reviews_path)
 
         super(ImprovedRecommender, self).__init__(items_path, train_path, test_path, val_path, sparse, tfidf, normalize)
         
@@ -343,18 +345,32 @@ class ImprovedRecommender(ContentBasedRecommender):
         recommendation_list = []
         for index, row in tqdm(df.iterrows()):
             # Compute uservector and recommendations for all users
-            reviewed_items = items.iloc[row["item_id"],:]
+            inventory_items = items.iloc[row["item_id"],:].copy(deep=True)
 
-            # If user has no reviews, no usable data is available
-            assert not reviewed_items.empty
+            # If user has no inventory items, no usable data is available
+            assert not inventory_items.empty
 
             user_vector = None
             if self.use_feedback:
-                # TODO implement!
-                raise NotImplementedError
+                playtime_weights = np.log2(np.array(row["playtime_forever"])+1)
+                feedback = None
+                inventory_items['weight'] = 0
+                inventory_items['feedback'] = False
+                inventory_items['sentiment'] = self.metadata.loc[row["item_id"], :]['sentiment']
+                if index in self.reviews.index:
+                    # use explicit feedback
+                    feedback = self.reviews.loc[index,:]
+                    for like, review in zip(feedback['recommend'], feedback['reviews']):
+                        if review in inventory_items.index:
+                            inventory_items.at[review, 'weight'] = 1 if like else 0
+                            inventory_items.at[review, 'feedback'] = True
+                inventory_items[inventory_items['feedback'] == False]['weight'] = inventory_items['sentiment']
+                inventory_items['weight'] = np.where(inventory_items['feedback'] == False, inventory_items['sentiment'], inventory_items['weight'])
+                print(inventory_items[['weight']].head(10))
+                assert False
             else:
-                # Computing average, assuming all reviews are indication of interest
-                user_vector = reviewed_items.mean()
+                # Computing average, assuming all inventory items are indication of interest
+                user_vector = inventory_items.mean()
 
             if self.normalize:
                 user_vector = self.normalizer.transform([user_vector.to_numpy()])
