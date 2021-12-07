@@ -3,6 +3,7 @@ import re
 import warnings
 
 import numpy as np
+from numpy.lib.function_base import place
 import pandas as pd
 import scipy
 from pandas import DataFrame
@@ -382,11 +383,18 @@ class ImprovedRecommender(ContentBasedRecommender):
 
             user_vector = None
             if self.use_feedback:
-                playtime_weights = np.log2(np.array(row["playtime_forever"])+1)
-                feedback = None
-                inventory_items['weight'] = 0
-                inventory_items['feedback'] = False
-                inventory_items['sentiment'] = self.metadata.loc[row["item_id"], :]['sentiment']
+                duplicates = inventory_items.index.duplicated(keep='first')
+                inventory_items = inventory_items[~duplicates]
+                playtime_list = row["normalized_playtime_forever_max"]
+                for i, idx in zip(reversed(range(len(duplicates))), duplicates):
+                    if idx:
+                        playtime_list.pop(i)
+                feature_columns = inventory_items.columns
+                new_info = pd.DataFrame({'playtime_weights': np.log2(np.array(playtime_list)+1).tolist(), 'weight': 0, 'feedback': False}, index=inventory_items.index)
+                inventory_items = pd.concat([inventory_items, new_info], axis=1)
+                inventory_items = inventory_items.copy()
+                sentiment = self.metadata.iloc[row["item_id"], :]['sentiment_rating']
+                inventory_items['sentiment'] = sentiment[~sentiment.index.duplicated(keep='first')]
                 if index in self.reviews.index:
                     # use explicit feedback
                     feedback = self.reviews.loc[index,:]
@@ -394,13 +402,15 @@ class ImprovedRecommender(ContentBasedRecommender):
                         if review in inventory_items.index:
                             inventory_items.at[review, 'weight'] = 1 if like else 0
                             inventory_items.at[review, 'feedback'] = True
+                # use implicit feedback where explicit is not defined
                 inventory_items[inventory_items['feedback'] == False]['weight'] = inventory_items['sentiment']
                 inventory_items['weight'] = np.where(inventory_items['feedback'] == False, inventory_items['sentiment'], inventory_items['weight'])
-                print(inventory_items[['weight']].head(10))
-                assert False
-            else:
-                # Computing average, assuming all inventory items are indication of interest
-                user_vector = inventory_items.mean()
+                inventory_items['weight'] *= inventory_items['playtime_weights']
+                inventory_items[feature_columns].multiply(inventory_items['weight'], axis="index")
+                inventory_items = inventory_items.filter(feature_columns)
+            
+            # Compute mean of item features (weighted when feedback is used)
+            user_vector = inventory_items.mean()
 
             if self.normalize:
                 user_vector = self.normalizer.transform([user_vector.to_numpy()])
