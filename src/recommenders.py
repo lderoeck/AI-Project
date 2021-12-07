@@ -23,8 +23,8 @@ class BaseRecommender(object):
             val_path (str): Path to validation data parquet file
         """
         items = self._preprocess_items(pd.read_pickle(items_path))
-        self.items = self._generate_item_features(items)
-        self.train = pd.read_parquet(train_path)
+        self.items, self.metadata = self._generate_item_features(items)
+        self.train = self._preprocess_train(pd.read_parquet(train_path))
         self.test = pd.read_parquet(test_path)
         self.val = pd.read_parquet(val_path)
         self.recommendations = DataFrame()
@@ -38,6 +38,35 @@ class BaseRecommender(object):
         Returns:
             DataFrame: Sanitised item metadata
         """
+
+        ### borrowed from data processing script
+        sentiment_map = {
+            'Overwhelmingly Negative' : (0.1, 1.0),
+            'Very Negative' : (0.1, 0.6),
+            'Negative' : (0.1, 0.1),
+            'Mostly Negative' : (0.3, 0.5),
+            '1 user reviews' : (0.5, 0.002),
+            '2 user reviews' : (0.5, 0.004),
+            '3 user reviews' : (0.5, 0.006),
+            '4 user reviews' : (0.5, 0.008),
+            '5 user reviews' : (0.5, 0.010),
+            '6 user reviews' : (0.5, 0.012),
+            '7 user reviews' : (0.5, 0.014),
+            '8 user reviews' : (0.5, 0.016),
+            '9 user reviews' : (0.5, 0.018),
+            'Mixed' : (0.55, 0.5),
+            'Mostly Positive' : (0.75, 0.5), 
+            'Positive' : (0.9, 0.1), 
+            'Very Positive' : (0.9, 0.6), 
+            'Overwhelmingly Positive' : (1.0, 1.0),
+        }
+        # fill nan with '1 user reviews'
+        sentiment = items['sentiment'].apply(lambda x: x if isinstance(x, str) else '1 user reviews')
+        # create new columns based on the sentiment
+        items['sentiment_rating'] = sentiment.apply(lambda x: sentiment_map[x][0])
+        items['sentiment_n_reviews'] = sentiment.apply(lambda x: sentiment_map[x][1])
+        ### stop borrow
+
         items["price"] = items["price"].apply(lambda p: np.float32(p) if re.match(r"\d+(?:.\d{2})?", str(p)) else 0)
         items["metascore"] = items["metascore"].apply(lambda m: m if m != "NA" else np.nan)
         items["developer"].fillna(value='', inplace=True)
@@ -49,6 +78,19 @@ class BaseRecommender(object):
         items["tags"] = items["tags"].apply(lambda l: [re.subn(r"[^a-z0-9]", "", my_str.lower())[0] for my_str in l])
         items["genres"] = items["genres"].apply(lambda l: [re.subn(r"[^a-z0-9]", "", my_str.lower())[0] for my_str in l])
         return items
+    
+    def _preprocess_train(self, train: DataFrame) -> DataFrame:
+        """Applies preprocessing to the training set
+
+        Args:
+            train (DataFrame): Dataframe containing all training data
+
+        Returns:
+            DataFrame: Sanitised training data
+        """
+        train["normalized_playtime_forever_sum"] = train.apply(lambda x: list((np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)/np.sum(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)), axis=1)
+        train["normalized_playtime_forever_max"] = train.apply(lambda x: list((np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)/np.max(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)), axis=1)
+        return train
     
     def set_user_data(self, train_path: str, test_path: str, val_path: str) -> None:
         """Read new train, test and val data
@@ -126,7 +168,7 @@ class BaseRecommender(object):
     
     
 class ContentBasedRecommender(BaseRecommender):
-    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, tfidf='default', normalize=False) -> None:
+    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, tfidf='default', normalize=False, columns:list=["genres", "tags"]) -> None:
         """Content based recommender
 
         Args:
@@ -137,12 +179,13 @@ class ContentBasedRecommender(BaseRecommender):
             sparse (bool, optional): If sparse representation should be used. Defaults to True.
             tfidf (str, optional): Which tf-idf method to use. Defaults to 'default'.
             normalize (bool, optional): If normalization should be used. Defaults to False.
+            columns (list, optional): Columns to use for feature representation. Defaults to ["genres", "tags"].
         """
-        
         self.sparse = sparse
         self.normalize = normalize
         self.recommendations = None
         self.normalizer = Normalizer(copy=False)
+        self.columns = columns
         
         # Select tf-idf method to use
         self.tfidf = None
@@ -170,9 +213,7 @@ class ContentBasedRecommender(BaseRecommender):
         Returns:
             DataFrame: Dataframe containing only relevant data for feature generation
         """
-        columns = ["genres", "tags"]
-        items = items.filter(columns)
-        return items
+        return items.filter(self.columns), items.filter([col for col in items.columns if col not in self.columns+["index"]])
 
     def _generate_item_features(self, items: DataFrame) -> DataFrame:
         """Generates feature vector of items and appends to returned DataFrame
@@ -183,14 +224,15 @@ class ContentBasedRecommender(BaseRecommender):
         Returns:
             DataFrame: dataframe with feature vector appended
         """
-        items = self._process_item_features(items)
+        items, metadata = self._process_item_features(items)
         # Combine all features into one column
         columns = items.columns.tolist()
         for col in columns:
             items[col] = items[col].fillna("").apply(set)
         items["tags"] = items.apply(lambda x: list(
             set.union(*([x[col] for col in columns]))), axis=1)
-        columns.remove("tags")
+        if "tags" in columns:
+            columns.remove("tags")
         items = items.drop(columns, axis=1)
 
         # Compute one-hot encoded vector of tags
@@ -202,7 +244,7 @@ class ContentBasedRecommender(BaseRecommender):
             items = items.join(DataFrame(mlb.fit_transform(items.pop(
                 "tags")), index=items.index, columns=["tag_" + c for c in mlb.classes_]))
 
-        return items
+        return items, metadata
 
     def generate_recommendations(self, amount=10, read_max=None) -> None:
         """Generate recommendations based on user review data
@@ -269,7 +311,7 @@ class ContentBasedRecommender(BaseRecommender):
 
 
 class ImprovedRecommender(ContentBasedRecommender):
-    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, dim_red=None, tfidf='default', use_feedback:bool=True, normalize:bool=False) -> None:
+    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, sparse: bool = True, dim_red=None, tfidf='default', use_feedback:bool=True, normalize:bool=False, columns:list=["genres", "tags", "publisher", "early_access"]) -> None:
         """Improved content based recommender
 
         Args:
@@ -282,24 +324,12 @@ class ImprovedRecommender(ContentBasedRecommender):
             tfidf (str, optional): Which tf-idf method to use. Defaults to 'default'.
             use_feedback(bool, optional): If feedback weighing should be used. Defaults to True.
             normalize (bool, optional): If normalization should be used. Defaults to False.
+            columns (list, optional): Columns to use for feature representation. Defaults to ["genres", "tags", "publisher", "early_access"].
         """
         self.dim_red = dim_red
         self.use_feedback = use_feedback
 
-        super(ImprovedRecommender, self).__init__(items_path, train_path, test_path, val_path, sparse, tfidf, normalize)
-        
-    def _process_item_features(self, items):
-        """Processes the item metadata for feature generation
-
-        Args:
-            items (DataFrame): Dataframe containing items metadata
-
-        Returns:
-            DataFrame: Dataframe containing only relevant data for feature generation
-        """
-        columns = ["genres", "tags", "specs", "developer", "publisher"]
-        items = items.filter(columns)
-        return items
+        super(ImprovedRecommender, self).__init__(items_path, train_path, test_path, val_path, sparse, tfidf, normalize, columns)
 
     def generate_recommendations(self, amount=10, read_max=None) -> None:
         """Generate recommendations based on user review data
