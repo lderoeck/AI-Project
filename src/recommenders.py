@@ -383,16 +383,9 @@ class ImprovedRecommender(ContentBasedRecommender):
 
             user_vector = None
             if self.use_feedback:
-                duplicates = inventory_items.index.duplicated(keep='first')
-                inventory_items = inventory_items[~duplicates]
-                playtime_list = row["normalized_playtime_forever_max"]
-                for i, idx in zip(reversed(range(len(duplicates))), duplicates):
-                    if idx:
-                        playtime_list.pop(i)
                 feature_columns = inventory_items.columns
-                new_info = pd.DataFrame({'playtime_weights': np.log2(np.array(playtime_list)+1).tolist(), 'weight': 0, 'feedback': False}, index=inventory_items.index)
+                new_info = pd.DataFrame({'playtime_weights': np.log2(np.array(row["normalized_playtime_forever_max"])+1).tolist(), 'weight': 0, 'feedback': False}, index=inventory_items.index)
                 inventory_items = pd.concat([inventory_items, new_info], axis=1)
-                inventory_items = inventory_items.copy()
                 sentiment = self.metadata.iloc[row["item_id"], :]['sentiment_rating']
                 inventory_items['sentiment'] = sentiment[~sentiment.index.duplicated(keep='first')]
                 if index in self.reviews.index:
