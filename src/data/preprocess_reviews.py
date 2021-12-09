@@ -46,6 +46,8 @@ reviews["reviews_count"] = reviews["reviews"].apply(len)
 reviews = reviews.drop("reviews", axis=1)
 reviews.sort_values("reviews_count", inplace=True)
 reviews = reviews.reset_index(drop=True)
+reviews.drop_duplicates(subset=['user_id'], inplace=True)
+
 user_ids = pd.read_pickle('./data/user_ids.pkl')
 reviews = user_ids.reset_index().merge(reviews, on='user_id').set_index('index')
 
@@ -58,4 +60,4 @@ games = pd.read_pickle('./data/games_original.pkl')
 users['item_id_y'] = users['item_id_y'].apply(lambda x: convert(x, games))
 users.drop(users[~users['item_id_y'].astype(bool)].index, inplace=True) # filter out empty review sets
 reviews = users[['item_id_y', 'recommend']].rename(columns={'item_id_y': 'reviews'})
-reviews.to_parquet('reviews.parquet')
+reviews.to_parquet('./data/reviews.parquet')
