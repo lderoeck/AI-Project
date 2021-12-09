@@ -379,12 +379,11 @@ class ImprovedRecommender(ContentBasedRecommender):
             user_vector = None
             weights = None
             if self.use_feedback:
-                weight_info = pd.DataFrame({'playtime_weights': np.log2(n_time_for_max+1).tolist(), 'weight': 0, 'feedback': False})
+                weight_info = pd.DataFrame({'playtime_weights': np.log2(n_time_for_max+1).tolist(), 'weight': 0, 'feedback': False}, index=it_ids)
                 weight_info['sentiment'] = self.metadata.iloc[it_ids]['sentiment_rating']
                 if index in self.reviews.index:
                     # use explicit feedback
-                    feedback = self.reviews.loc[index,:]
-                    for like, review in zip(feedback['recommend'], feedback['reviews']):
+                    for like, review in zip(self.reviews.at[index, 'recommend'], self.reviews.at[index, 'reviews']):
                         if review in weight_info.index:
                             weight_info.at[review, 'weight'] = 1 if like else 0
                             weight_info.at[review, 'feedback'] = True
@@ -401,7 +400,7 @@ class ImprovedRecommender(ContentBasedRecommender):
         if self.normalize:
             user_matrix = self.normalizer.transform(user_matrix)
 
-        for user_vector in tqdm(user_matrix):
+        for i, user_vector in tqdm(enumerate(user_matrix)):
             # Start overhead of 20%
             gen_am = amount//5
             recommendations = []
@@ -410,7 +409,7 @@ class ImprovedRecommender(ContentBasedRecommender):
                 gen_am += amount - len(recommendations)
                 nns = nbrs.kneighbors([user_vector], gen_am, return_distance=True)
                 # Filter out items in reviews
-                recommendations = list(filter(lambda id: id not in it_ids, nns[1][0]))
+                recommendations = list(filter(lambda id: id not in training_data.iat[i, 0], nns[1][0]))
 
             recommendation_list.append(recommendations[:amount])
 
