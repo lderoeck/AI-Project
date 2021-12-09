@@ -12,18 +12,22 @@ def unpack_split(df, col):
     
 def load_interactions(f, n_splits=5):
     df = pd.read_pickle(f)
-    df = df.applymap(lambda x: np.array(x, dtype=np.int32))
+    cols = ['train', 'val', 'test']
+    df[cols] = df[cols].applymap(lambda x: np.array(x, dtype=np.int32))
+    user_ids = df['user_id']
     interactions_dict = {}
     for split in range(n_splits):
-        for column in ['train', 'val', 'test']:
+        for column in cols:
             interactions_dict[split, column] = pd.DataFrame({
                 'item_id': df[column].apply(lambda x: x[split, 0]),
                 'playtime_forever': df[column].apply(lambda x: x[split, 1]),
                 'playtime_2weeks': df[column].apply(lambda x: x[split, 2])})
-    return interactions_dict
+    return interactions_dict, user_ids
 
 def main(f: str, n_splits=5) -> None:
-    interactions = load_interactions(f, n_splits)
+    interactions, user_ids = load_interactions(f, n_splits)
+    print(f"{f} -> user_ids.parquet")
+    user_ids.to_frame().to_parquet("user_ids.parquet")
     for i in range(n_splits):
         for part in ['train', 'val', 'test']:
             part_file = interactions[i, part].applymap(lambda x: x.tolist())
