@@ -89,8 +89,8 @@ class BaseRecommender(object):
         Returns:
             DataFrame: Sanitised training data
         """
-        train["normalized_playtime_forever_sum"] = train.apply(lambda x: list((np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)/np.sum(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)), axis=1)
-        train["normalized_playtime_forever_max"] = train.apply(lambda x: list((np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)/np.max(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)), axis=1)
+        train["normalized_playtime_forever_sum"] = train.apply(lambda x: (np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)/np.sum(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1), axis=1)
+        train["normalized_playtime_forever_max"] = train.apply(lambda x: (np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)/np.max(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1), axis=1)
         return train
     
     def set_user_data(self, train_path: str, test_path: str, val_path: str) -> None:
@@ -382,33 +382,29 @@ class ImprovedRecommender(ContentBasedRecommender):
             assert not inventory_items.empty
 
             user_vector = None
+            weights = None
             if self.use_feedback:
-                feature_columns = inventory_items.columns
-                new_info = pd.DataFrame({'playtime_weights': np.log2(np.array(row["normalized_playtime_forever_max"])+1).tolist(), 'weight': 0, 'feedback': False}, index=inventory_items.index)
-                inventory_items = pd.concat([inventory_items, new_info], axis=1)
-                sentiment = self.metadata.iloc[row["item_id"], :]['sentiment_rating']
-                inventory_items['sentiment'] = sentiment[~sentiment.index.duplicated(keep='first')]
+                weight_info = pd.DataFrame({'playtime_weights': np.log2(row["normalized_playtime_forever_max"]+1).tolist(), 'weight': 0, 'feedback': False}, index=inventory_items.index)
+                weight_info['sentiment'] = self.metadata.iloc[row["item_id"], :]['sentiment_rating']
                 if index in self.reviews.index:
                     # use explicit feedback
                     feedback = self.reviews.loc[index,:]
                     for like, review in zip(feedback['recommend'], feedback['reviews']):
-                        if review in inventory_items.index:
-                            inventory_items.at[review, 'weight'] = 1 if like else 0
-                            inventory_items.at[review, 'feedback'] = True
+                        if review in weight_info.index:
+                            weight_info.at[review, 'weight'] = 1 if like else 0
+                            weight_info.at[review, 'feedback'] = True
                 # use implicit feedback where explicit is not defined
-                inventory_items[inventory_items['feedback'] == False]['weight'] = inventory_items['sentiment']
-                inventory_items['weight'] = np.where(inventory_items['feedback'] == False, inventory_items['sentiment'], inventory_items['weight'])
-                inventory_items['weight'] *= inventory_items['playtime_weights']
-                inventory_items[feature_columns].multiply(inventory_items['weight'], axis="index")
-                inventory_items = inventory_items.filter(feature_columns)
+                weight_info['weight'] = np.where(weight_info['feedback'] == False, weight_info['sentiment'], weight_info['weight'])
+                weight_info['weight'] *= weight_info['playtime_weights']
+                weights = weight_info['weight'].to_numpy()
             
             # Compute mean of item features (weighted when feedback is used)
-            user_vector = inventory_items.mean()
+            user_vector = np.average(inventory_items.to_numpy(), weights=weights, axis=0)
 
             if self.normalize:
-                user_vector = self.normalizer.transform([user_vector.to_numpy()])
+                user_vector = self.normalizer.transform([user_vector])
             else:
-                user_vector = [user_vector.to_numpy()]
+                user_vector = [user_vector]
             # Start overhead of 20%
             gen_am = amount//5
             recommendations = []
