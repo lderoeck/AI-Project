@@ -380,7 +380,7 @@ class ImprovedRecommender(ContentBasedRecommender):
             weights = None
             if self.use_feedback:
                 weight_info = pd.DataFrame({'playtime_weights': np.log2(n_time_for_max+1).tolist(), 'weight': 0, 'feedback': False}, index=it_ids)
-                weight_info['sentiment'] = self.metadata.iloc[it_ids]['sentiment_rating']
+                weight_info['sentiment'] = self.metadata.iloc[it_ids]['sentiment_rating'] * self.metadata.iloc[it_ids]['sentiment_n_reviews']
                 if index in self.reviews.index:
                     # use explicit feedback
                     for like, review in zip(self.reviews.at[index, 'recommend'], self.reviews.at[index, 'reviews']):
@@ -393,7 +393,9 @@ class ImprovedRecommender(ContentBasedRecommender):
                 weights = weight_info['weight'].to_numpy()
 
             # Compute mean of item features (weighted when feedback is used)
-            user_vector = np.average(inventory_items.toarray(), weights=weights, axis=0)
+            if self.sparse and not self.dim_red:
+                inventory_items = inventory_items.toarray()
+            user_vector = np.average(inventory_items, weights=weights, axis=0)
 
             user_matrix[index] = user_vector
 
