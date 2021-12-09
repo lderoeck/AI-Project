@@ -48,7 +48,7 @@ reviews.sort_values("reviews_count", inplace=True)
 reviews = reviews.reset_index(drop=True)
 reviews.drop_duplicates(subset=['user_id'], inplace=True)
 
-user_ids = pd.read_pickle('./data/user_ids.pkl')
+user_ids = pd.read_parquet('./data/user_ids.parquet')
 reviews = user_ids.reset_index().merge(reviews, on='user_id').set_index('index')
 
 users = pd.read_pickle('./data/interactions_all.pkl')
