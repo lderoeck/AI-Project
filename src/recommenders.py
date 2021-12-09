@@ -342,8 +342,7 @@ class ImprovedRecommender(ContentBasedRecommender):
             read_max (int, optional): Max amount of users to read. Defaults to None.
         """
         items = self.items
-        
-        df = self.train.iloc[:read_max].copy(deep=True) if read_max else self.train
+        training_data = self.train.iloc[:read_max].copy(deep=True) if read_max else self.train
 
         # Drop id so only feature vector is left
         if self.sparse:
@@ -365,27 +364,23 @@ class ImprovedRecommender(ContentBasedRecommender):
         # Combine transformed feature vector back into items
         if self.sparse and self.dim_red:
             warnings.warn("Sparse was set to 'True' but dimensionality reduction is used, using dense matrix representation instead.", RuntimeWarning)
-        if self.sparse and self.dim_red is None:
-            items = DataFrame.sparse.from_spmatrix(X)
-        else:
-            items = DataFrame(X)
+        items = X
 
         self.method.set_params(n_neighbors=amount)
         nbrs = self.method.fit(X)
 
         recommendation_list = []
-        for index, row in tqdm(df.iterrows()):
-            # Compute uservector and recommendations for all users
-            inventory_items = items.iloc[row["item_id"],:].copy(deep=True)
+        user_matrix = np.zeros([training_data.shape[0], items.shape[1]])
 
-            # If user has no inventory items, no usable data is available
-            assert not inventory_items.empty
+        for index, it_ids, time_for, time_2w, n_time_for_sum, n_time_for_max in tqdm(training_data.itertuples()):
+            # Compute uservector and recommendations for all users
+            inventory_items = items[it_ids]
 
             user_vector = None
             weights = None
             if self.use_feedback:
-                weight_info = pd.DataFrame({'playtime_weights': np.log2(row["normalized_playtime_forever_max"]+1).tolist(), 'weight': 0, 'feedback': False}, index=inventory_items.index)
-                weight_info['sentiment'] = self.metadata.iloc[row["item_id"], :]['sentiment_rating']
+                weight_info = pd.DataFrame({'playtime_weights': np.log2(n_time_for_max+1).tolist(), 'weight': 0, 'feedback': False})
+                weight_info['sentiment'] = self.metadata.iloc[it_ids]['sentiment_rating']
                 if index in self.reviews.index:
                     # use explicit feedback
                     feedback = self.reviews.loc[index,:]
@@ -397,28 +392,30 @@ class ImprovedRecommender(ContentBasedRecommender):
                 weight_info['weight'] = np.where(weight_info['feedback'] == False, weight_info['sentiment'], weight_info['weight'])
                 weight_info['weight'] *= weight_info['playtime_weights']
                 weights = weight_info['weight'].to_numpy()
-            
-            # Compute mean of item features (weighted when feedback is used)
-            user_vector = np.average(inventory_items.to_numpy(), weights=weights, axis=0)
 
-            if self.normalize:
-                user_vector = self.normalizer.transform([user_vector])
-            else:
-                user_vector = [user_vector]
+            # Compute mean of item features (weighted when feedback is used)
+            user_vector = np.average(inventory_items.toarray(), weights=weights, axis=0)
+
+            user_matrix[index] = user_vector
+
+        if self.normalize:
+            user_matrix = self.normalizer.transform(user_matrix)
+
+        for user_vector in tqdm(user_matrix):
             # Start overhead of 20%
             gen_am = amount//5
             recommendations = []
             while len(recommendations) < amount:
                 # calculate amount of items to be generated
                 gen_am += amount - len(recommendations)
-                nns = nbrs.kneighbors(user_vector, gen_am, return_distance=True)
+                nns = nbrs.kneighbors([user_vector], gen_am, return_distance=True)
                 # Filter out items in reviews
-                recommendations = list(filter(lambda id: id not in row["item_id"], nns[1][0]))
+                recommendations = list(filter(lambda id: id not in it_ids, nns[1][0]))
 
             recommendation_list.append(recommendations[:amount])
 
-        df["recommendations"] = recommendation_list
-        self.recommendations = df
+        training_data["recommendations"] = recommendation_list
+        self.recommendations = training_data
 
 class PopBasedRecommender(BaseRecommender):
     def __init__(self, train_path: str, test_path: str, val_path: str) -> None:
