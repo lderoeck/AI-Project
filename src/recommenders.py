@@ -148,7 +148,7 @@ class BaseRecommender(object):
 
         # compute nDCG@k
         eval['nDCG@k'] = eval.apply(lambda row: np.sum([int(rec in row['items'])/(np.log2(i+2)) for i, rec in enumerate(row['recommendations'])]), axis=1)
-        eval['nDCG@k'] = eval.apply(lambda row: row['nDCG@k']/np.sum([1/(np.log2(i+2)) for i in range(min(len(row['recommendations']), len(row['items'])))]), axis=1)
+        eval['nDCG@k'] = eval.apply(lambda row: row['nDCG@k']/np.sum([1/(np.log2(i+2)) for i in range(min(k, len(row['items'])))]), axis=1)
         results_dict[f'nDCG@{k}'] = eval['nDCG@k'].mean()
 
         # compute recall@k
@@ -158,7 +158,7 @@ class BaseRecommender(object):
         results_dict[f'recall@{k}'] = eval['recall@k'].mean()
 
         # compute ideal recall@k
-        eval['ideal_recall@k'] = eval.apply(lambda row: min(len(row['items']), len(row["recommendations"]))/len(row['items']), axis=1)
+        eval['ideal_recall@k'] = eval.apply(lambda row: min(k, len(row['items']))/len(row['items']), axis=1)
         results_dict[f'ideal_recall@{k}'] = eval['ideal_recall@k'].mean()
         
         # compute normalised recall@k
