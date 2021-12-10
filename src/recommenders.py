@@ -387,6 +387,8 @@ class ImprovedRecommender(ContentBasedRecommender):
                         if review in weight_info.index:
                             weight_info.at[review, 'weight'] = 1 if like else 0
                             weight_info.at[review, 'feedback'] = True
+                    if weight_info[weight_info['weight'] == 1].empty:
+                        weight_info['feedback'] = False
                 # use implicit feedback where explicit is not defined
                 weight_info['weight'] = np.where(weight_info['feedback'] == False, weight_info['sentiment'], weight_info['weight'])
                 weight_info['weight'] *= weight_info['playtime_weights']
