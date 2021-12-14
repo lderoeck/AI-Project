@@ -75,8 +75,11 @@ class BaseRecommender(object):
         items["publisher"].fillna(value='', inplace=True)
         items["publisher"] = items["publisher"].apply(lambda my_str: my_str.lower().split(','))
         items["early_access"] = items["early_access"].apply(lambda x: ["earlyaccess"] if x else [])
+        items["specs"] = items["specs"].fillna("")
         items["specs"] = items["specs"].apply(lambda l: [re.subn(r"[^a-z0-9]", "", my_str.lower())[0] for my_str in l])
+        items["tags"] = items["tags"].fillna("")
         items["tags"] = items["tags"].apply(lambda l: [re.subn(r"[^a-z0-9]", "", my_str.lower())[0] for my_str in l])
+        items["genres"] = items["genres"].fillna("")
         items["genres"] = items["genres"].apply(lambda l: [re.subn(r"[^a-z0-9]", "", my_str.lower())[0] for my_str in l])
         return items
     
