@@ -345,10 +345,10 @@ class ImprovedRecommender(ContentBasedRecommender):
         assert isinstance(weighting_scheme['playtime'], bool)
         assert isinstance(weighting_scheme['reviews'], bool)
         assert weighting_scheme['sentiment'] in ['rating', 'n_reviews', 'mixed', False]
-        if not (weighting_scheme['sentiment'] or weighting_scheme['reviews'] or weighting_scheme['playtime']):
-            weighting_scheme = None
         if not weighting_scheme['sentiment'] and not weighting_scheme['playtime']:
             warnings.warn("Both playtime and sentiment in weighting were set to 'False', using playtime.", RuntimeWarning)
+        if not (weighting_scheme['sentiment'] or weighting_scheme['reviews'] or weighting_scheme['playtime']):
+            weighting_scheme = None
         self.weighting_scheme = weighting_scheme
 
     def generate_recommendations(self, amount=10, read_max=None) -> None:
@@ -360,6 +360,10 @@ class ImprovedRecommender(ContentBasedRecommender):
         """
         items = self.items
         training_data = self.train.iloc[:read_max].copy(deep=True) if read_max else self.train
+        
+        if self.sparse and self.dim_red:
+            self.sparse = False
+            warnings.warn("Sparse was set to 'True' but dimensionality reduction is used, using dense matrix representation instead.", RuntimeWarning)
 
         # Drop id so only feature vector is left
         if self.sparse:
@@ -381,8 +385,6 @@ class ImprovedRecommender(ContentBasedRecommender):
             X = self.normalizer.fit_transform(X)
 
         # Combine transformed feature vector back into items
-        if self.sparse and self.dim_red:
-            warnings.warn("Sparse was set to 'True' but dimensionality reduction is used, using dense matrix representation instead.", RuntimeWarning)
         items = X
 
         self.method.set_params(n_neighbors=amount)
@@ -442,8 +444,7 @@ class ImprovedRecommender(ContentBasedRecommender):
 
             recommendation_list.append(recommendations[:amount])
 
-        training_data["recommendations"] = recommendation_list
-        self.recommendations = training_data
+        self.recommendations = pd.concat((training_data, DataFrame({'recommendations': recommendation_list})), axis=1)
 
 class PopBasedRecommender(BaseRecommender):
     def __init__(self, train_path: str, test_path: str, val_path: str) -> None:
