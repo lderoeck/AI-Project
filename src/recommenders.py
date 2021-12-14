@@ -356,6 +356,8 @@ class ImprovedRecommender(ContentBasedRecommender):
         if self.tfidf:
             # Use tf-idf
             X = self.tfidf.fit_transform(X)
+            if not self.sparse:
+                X = X.todense()
 
         if self.dim_red:
             # Use dimensionality reduction
