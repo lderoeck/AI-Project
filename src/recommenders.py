@@ -315,7 +315,7 @@ class ContentBasedRecommender(BaseRecommender):
 
 
 class ImprovedRecommender(ContentBasedRecommender):
-    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, reviews_path: str, sparse: bool = True, dim_red=None, tfidf='default', use_feedback:bool=True, normalize:bool=False, columns:list=["genres", "tags", "publisher", "early_access"]) -> None:
+    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, reviews_path: str, sparse: bool = True, dim_red=None, tfidf='default', normalize:bool=False, columns:list=["genres", "tags", "publisher", "early_access"], weighting_scheme={'playtime': True, 'sentiment': 'mixed', 'reviews': True}) -> None:
         """Improved content based recommender
 
         Args:
@@ -332,10 +332,24 @@ class ImprovedRecommender(ContentBasedRecommender):
             columns (list, optional): Columns to use for feature representation. Defaults to ["genres", "tags", "publisher", "early_access"].
         """
         self.dim_red = dim_red
-        self.use_feedback = use_feedback
         self.reviews = pd.read_parquet(reviews_path)
+        if weighting_scheme:
+            self.set_weighting_scheme(weighting_scheme)
+        else:
+            self.weighting_scheme = None
 
         super(ImprovedRecommender, self).__init__(items_path, train_path, test_path, val_path, sparse, tfidf, normalize, columns)
+        
+    def set_weighting_scheme(self, weighting_scheme):
+        assert all([key in weighting_scheme for key in ['playtime', 'sentiment', 'reviews']])
+        assert isinstance(weighting_scheme['playtime'], bool)
+        assert isinstance(weighting_scheme['reviews'], bool)
+        assert weighting_scheme['sentiment'] in ['rating', 'n_reviews', 'mixed', False]
+        if not (weighting_scheme['sentiment'] or weighting_scheme['reviews'] or weighting_scheme['playtime']):
+            weighting_scheme = None
+        if not weighting_scheme['sentiment'] and not weighting_scheme['playtime']:
+            warnings.warn("Both playtime and sentiment in weighting were set to 'False', using playtime.", RuntimeWarning)
+        self.weighting_scheme = weighting_scheme
 
     def generate_recommendations(self, amount=10, read_max=None) -> None:
         """Generate recommendations based on user review data
@@ -381,20 +395,26 @@ class ImprovedRecommender(ContentBasedRecommender):
 
             user_vector = None
             weights = None
-            if self.use_feedback:
-                weight_info = pd.DataFrame({'playtime_weights': np.log2(n_time_for_max+1).tolist(), 'weight': 0, 'feedback': False}, index=it_ids)
-                weight_info['sentiment'] = self.metadata.iloc[it_ids]['sentiment_rating'] * self.metadata.iloc[it_ids]['sentiment_n_reviews']
-                if index in self.reviews.index:
+            if self.weighting_scheme:
+                weight_info = pd.DataFrame({'playtime_weights': np.log2(n_time_for_max+1).tolist(), 'weight': 1, 'feedback': False, 'sentiment': 1}, index=it_ids)
+                if self.weighting_scheme['sentiment'] in ['rating', 'mixed']:
+                    weight_info['sentiment'] *= self.metadata.iloc[it_ids]['sentiment_rating']
+                if self.weighting_scheme['sentiment'] in ['n_reviews', 'mixed']:
+                    weight_info['sentiment'] *= self.metadata.iloc[it_ids]['sentiment_n_reviews']
+                if self.weighting_scheme['reviews'] and index in self.reviews.index:
                     # use explicit feedback
                     for like, review in zip(self.reviews.at[index, 'recommend'], self.reviews.at[index, 'reviews']):
                         if review in weight_info.index:
                             weight_info.at[review, 'weight'] = 1 if like else 0
                             weight_info.at[review, 'feedback'] = True
-                    if weight_info[weight_info['weight'] == 1].empty:
+                    if weight_info[weight_info['weight'] == 1].empty: # this ensures that sentiment is used if user has disliked all of its items in the training data
                         weight_info['feedback'] = False
+                        weight_info['weight'] = 1
                 # use implicit feedback where explicit is not defined
-                weight_info['weight'] = np.where(weight_info['feedback'] == False, weight_info['sentiment'], weight_info['weight'])
-                weight_info['weight'] *= weight_info['playtime_weights']
+                if self.weighting_scheme['sentiment']:
+                    weight_info['weight'] = np.where(weight_info['feedback'] == False, weight_info['sentiment'], weight_info['weight'])
+                if self.weighting_scheme['playtime']:
+                    weight_info['weight'] *= weight_info['playtime_weights']
                 weights = weight_info['weight'].to_numpy()
 
             # Compute mean of item features (weighted when feedback is used)
