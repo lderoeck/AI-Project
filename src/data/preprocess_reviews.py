@@ -55,9 +55,15 @@ users = pd.read_pickle('./data/interactions.pkl')
 users = unpack_split(users, 'interactions')
 users = users.merge(reviews, left_index=True, right_index=True)
 
-games = pd.read_pickle('./data/games_original.pkl')
+games = pd.read_pickle('./data/games.pkl')
 
 users['item_id_y'] = users['item_id_y'].apply(lambda x: convert(x, games))
 users.drop(users[~users['item_id_y'].astype(bool)].index, inplace=True) # filter out empty review sets
+
+# check that most reviews are within the items of the user
+users['reviews_in_games'] = users.apply(lambda row: len(set(row['item_id_x']).intersection(set(row['item_id_y'])))/len(row['item_id_y']), axis=1)
+print(users['reviews_in_games'].mean())
+
 reviews = users[['item_id_y', 'recommend']].rename(columns={'item_id_y': 'reviews'})
+
 reviews.to_parquet('./data/reviews.parquet')
