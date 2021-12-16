@@ -344,8 +344,6 @@ class ImprovedRecommender(ContentBasedRecommender):
         assert isinstance(weighting_scheme['playtime'], bool)
         assert isinstance(weighting_scheme['reviews'], bool)
         assert weighting_scheme['sentiment'] in ['rating', 'n_reviews', 'mixed', False]
-        if not weighting_scheme['sentiment'] and not weighting_scheme['playtime']:
-            warnings.warn("Both playtime and sentiment in weighting were set to 'False', using playtime.", RuntimeWarning)
         if not (weighting_scheme['sentiment'] or weighting_scheme['reviews'] or weighting_scheme['playtime']):
             weighting_scheme = None
         self.weighting_scheme = weighting_scheme
@@ -400,8 +398,10 @@ class ImprovedRecommender(ContentBasedRecommender):
 
             user_vector = None
             weights = None
+            # if self.weighting_scheme and inventory_items.shape[0] >= 5:
             if self.weighting_scheme:
-                weight_info = pd.DataFrame({'playtime_weights': np.log2(n_time_for_max+1).tolist(), 'weight': 1, 'feedback': False, 'sentiment': 1}, index=it_ids)
+                # min_threshold = 0.8
+                weight_info = pd.DataFrame({'playtime_weights': np.reciprocal((1+np.power(np.e, (-n_time_for_max*4)))).tolist(), 'weight': 1, 'feedback': False, 'sentiment': 1}, index=it_ids)
                 if self.weighting_scheme['sentiment'] in ['rating', 'mixed']:
                     weight_info['sentiment'] *= self.metadata.iloc[it_ids]['sentiment_rating']
                 if self.weighting_scheme['sentiment'] in ['n_reviews', 'mixed']:
@@ -419,7 +419,7 @@ class ImprovedRecommender(ContentBasedRecommender):
                 if self.weighting_scheme['sentiment']:
                     weight_info['weight'] = np.where(weight_info['feedback'] == False, weight_info['sentiment'], weight_info['weight'])
                 if self.weighting_scheme['playtime']:
-                    weight_info['weight'] *= weight_info['playtime_weights']
+                    weight_info['weight'] *= np.where(weight_info['feedback'] == False, weight_info['playtime_weights'], np.ones(inventory_items.shape[0]))
                 weights = weight_info['weight'].to_numpy()
 
             # Compute mean of item features (weighted when feedback is used)
