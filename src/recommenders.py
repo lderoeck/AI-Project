@@ -3,7 +3,6 @@ import re
 import warnings
 
 import numpy as np
-from numpy.lib.function_base import place
 import pandas as pd
 import scipy
 from pandas import DataFrame
@@ -351,7 +350,7 @@ class ImprovedRecommender(ContentBasedRecommender):
             weighting_scheme = None
         self.weighting_scheme = weighting_scheme
 
-    def generate_recommendations(self, amount=10, read_max=None) -> None:
+    def generate_recommendations(self, amount=10, read_max=None, seed=42069) -> None:
         """Generate recommendations based on user review data
 
         Args:
@@ -359,7 +358,8 @@ class ImprovedRecommender(ContentBasedRecommender):
             read_max (int, optional): Max amount of users to read. Defaults to None.
         """
         items = self.items
-        training_data = self.train.iloc[:read_max].copy(deep=True) if read_max else self.train
+        training_data = self.train.sample(n=read_max, random_state=seed) if read_max else self.train
+        # training_data = self.train.iloc[:read_max].copy(deep=True) if read_max else self.train
         
         if self.sparse and self.dim_red:
             self.sparse = False
@@ -392,7 +392,8 @@ class ImprovedRecommender(ContentBasedRecommender):
 
         recommendation_list = []
         user_matrix = np.zeros([training_data.shape[0], items.shape[1]])
-
+        
+        i = 0
         for index, it_ids, time_for, time_2w, n_time_for_sum, n_time_for_max in tqdm(training_data.itertuples()):
             # Compute uservector and recommendations for all users
             inventory_items = items[it_ids]
@@ -426,7 +427,8 @@ class ImprovedRecommender(ContentBasedRecommender):
                 inventory_items = inventory_items.toarray()
             user_vector = np.average(inventory_items, weights=weights, axis=0)
 
-            user_matrix[index] = user_vector
+            user_matrix[i] = user_vector
+            i += 1
 
         if self.normalize:
             user_matrix = self.normalizer.transform(user_matrix)
@@ -444,7 +446,7 @@ class ImprovedRecommender(ContentBasedRecommender):
 
             recommendation_list.append(recommendations[:amount])
 
-        self.recommendations = pd.concat((training_data, DataFrame({'recommendations': recommendation_list})), axis=1)
+        self.recommendations = pd.concat((training_data, DataFrame({'recommendations': recommendation_list}, index=training_data.index)), axis=1)
 
 class PopBasedRecommender(BaseRecommender):
     def __init__(self, train_path: str, test_path: str, val_path: str) -> None:
