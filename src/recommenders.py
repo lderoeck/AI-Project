@@ -459,7 +459,7 @@ class PopBasedRecommender(BaseRecommender):
         self.test = pd.read_parquet(test_path)
         self.val = pd.read_parquet(val_path)
 
-    def generate_recommendations(self, read_max=None) -> None:
+    def generate_recommendations(self, amount:int=10, read_max:int=None) -> None:
         """Generates recommendations based on popularity of the items
 
         Args:
@@ -471,5 +471,5 @@ class PopBasedRecommender(BaseRecommender):
         n_game_pop.dropna(inplace=True)
         n_game_pop = n_game_pop.value_counts()
 
-        df["recommendations"] = df["item_id"].apply(lambda x: [rec for rec in n_game_pop.index if rec not in x][:10]) 
+        df["recommendations"] = df["item_id"].apply(lambda x: [rec for rec in n_game_pop.index if rec not in x][:amount]) 
         self.recommendations = df
