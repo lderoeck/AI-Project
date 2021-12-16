@@ -350,7 +350,7 @@ class ImprovedRecommender(ContentBasedRecommender):
             weighting_scheme = None
         self.weighting_scheme = weighting_scheme
 
-    def generate_recommendations(self, amount=10, read_max=None, seed=42069) -> None:
+    def generate_recommendations(self, amount=10, read_max=None, seed=42069, silence=False) -> None:
         """Generate recommendations based on user review data
 
         Args:
@@ -394,7 +394,7 @@ class ImprovedRecommender(ContentBasedRecommender):
         user_matrix = np.zeros([training_data.shape[0], items.shape[1]])
         
         i = 0
-        for index, it_ids, time_for, time_2w, n_time_for_sum, n_time_for_max in tqdm(training_data.itertuples()):
+        for index, it_ids, time_for, time_2w, n_time_for_sum, n_time_for_max in tqdm(training_data.itertuples(), disable=silence):
             # Compute uservector and recommendations for all users
             inventory_items = items[it_ids]
 
@@ -433,7 +433,7 @@ class ImprovedRecommender(ContentBasedRecommender):
         if self.normalize:
             user_matrix = self.normalizer.transform(user_matrix)
 
-        for i, user_vector in tqdm(enumerate(user_matrix)):
+        for i, user_vector in tqdm(enumerate(user_matrix), disable=silence):
             # Start overhead of 20%
             gen_am = amount//5
             recommendations = []
@@ -461,7 +461,7 @@ class PopBasedRecommender(BaseRecommender):
         self.test = pd.read_parquet(test_path)
         self.val = pd.read_parquet(val_path)
 
-    def generate_recommendations(self, read_max=None) -> None:
+    def generate_recommendations(self, amount:int=10, read_max:int=None) -> None:
         """Generates recommendations based on popularity of the items
 
         Args:
@@ -473,5 +473,5 @@ class PopBasedRecommender(BaseRecommender):
         n_game_pop.dropna(inplace=True)
         n_game_pop = n_game_pop.value_counts()
 
-        df["recommendations"] = df["item_id"].apply(lambda x: [rec for rec in n_game_pop.index if rec not in x][:10]) 
+        df["recommendations"] = df["item_id"].apply(lambda x: [rec for rec in n_game_pop.index if rec not in x][:amount]) 
         self.recommendations = df
