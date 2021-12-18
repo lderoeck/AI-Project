@@ -1,8 +1,6 @@
 import urllib
 import xmltodict
 import pandas as pd
-import numpy as np
-from random import sample
 from sklearn.model_selection import train_test_split
 
 def split_data(data, seed):
@@ -21,8 +19,10 @@ def get_user_info(user):
     return xmltodict.parse(data)
 
 if __name__ == '__main__':
+    games = pd.read_pickle('./data/games.pkl')
     users = ['epiquesam', 'Vyolex']
     cols = ['item_id', 'playtime_forever', 'playtime_2weeks']
+    all = pd.DataFrame(columns=cols)
     train = pd.DataFrame(columns=cols)
     test = pd.DataFrame(columns=cols)
     val = pd.DataFrame(columns=cols)
@@ -31,29 +31,36 @@ if __name__ == '__main__':
         item_id = []
         playtime_forever = []
         playtime_2weeks = []
-        data = {'item_id': item_id, 'playtime_forever': playtime_forever, 'playtime_2weeks': playtime_2weeks}
         for game in user_info['gamesList']['games']['game']:
-            item_id.append(game['appID'])
+            id = game['appID']
+            new_id = games.index[games['id'] == id].tolist()
+            if len(new_id) > 0:
+                item_id.append(new_id[0])
+            else:
+                print(game)
+                continue
             if 'hoursOnRecord' in game:
-                playtime_forever.append(game['hoursOnRecord'])
+                playtime_forever.append(float(game['hoursOnRecord'].replace(',', '')))
             else:
                 playtime_forever.append(0)
             if 'hoursLast2Weeks' in game:
-                playtime_2weeks.append(game['hoursLast2Weeks'])
+                playtime_2weeks.append(float(game['hoursLast2Weeks'].replace(',', '')))
             else:
                 playtime_2weeks.append(0)
-        l = 100 #length of data 
-        f = 50  #number of elements you need
         
+        data = {'item_id': item_id, 'playtime_forever': playtime_forever, 'playtime_2weeks': playtime_2weeks}
         splits_data = [dict() for _ in range(3)]
         for key in data:
             splits = split_data(data[key], 42)
             for i, split in enumerate(splits):
                 splits_data[i][key] = split
         
+        all = all.append(data, ignore_index=True)
         train = train.append(splits_data[0], ignore_index=True)
         test = test.append(splits_data[1], ignore_index=True)
         val = val.append(splits_data[2], ignore_index=True)
+    
+    all.to_parquet('./data/train_all_users.parquet')
     train.to_parquet('./data/train_users.parquet')
     test.to_parquet('./data/test_users.parquet')
     val.to_parquet('./data/val_users.parquet')
