@@ -115,7 +115,7 @@ class BaseRecommender(object):
         """
         pass
 
-    def evaluate(self, filename=None, qual_eval_folder=None, k=10, val=False) -> dict:
+    def evaluate(self, k=10, val=False) -> dict:
         """Evaluate the recommendations
 
         Args:
@@ -135,11 +135,6 @@ class BaseRecommender(object):
         eval = eval.merge(gt, left_index=True, right_index=True)
 
         results_dict = dict()
-
-        if filename and qual_eval_folder:
-            if not os.path.exists(qual_eval_folder):
-                os.makedirs(qual_eval_folder)
-            eval.to_parquet(qual_eval_folder + filename + '.parquet')
             
         # Cap to k recommendations
         eval['recommendations'] = eval['recommendations'].apply(lambda rec: rec[:k])
@@ -168,6 +163,14 @@ class BaseRecommender(object):
         results_dict[f'nRecall@{k}'] = eval['nRecall@k'].mean()
 
         return results_dict
+
+    def qualitative_evaluation(self, users:list=[]) -> DataFrame:
+        eval_data = self.recommendations if len(users) == 0 else self.recommendations.iloc[users]
+        new_data = DataFrame({"owned_items": eval_data["item_id"].apply(lambda row: [self.metadata.at[id, "app_name"] for id in row]), 
+            "recommended_items": eval_data["recommendations"].apply(lambda row: [self.metadata.at[id, "app_name"] for id in row])}, index=eval_data.index)
+        
+        return new_data
+
     
     
 class ContentBasedRecommender(BaseRecommender):
