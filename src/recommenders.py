@@ -164,10 +164,13 @@ class BaseRecommender(object):
 
         return results_dict
 
-    def qualitative_evaluation(self, users:list=[]) -> DataFrame:
+    def qualitative_evaluation(self, users:list=[], export_path:str=None) -> DataFrame:
         eval_data = self.recommendations if len(users) == 0 else self.recommendations.iloc[users]
         new_data = DataFrame({"owned_items": eval_data["item_id"].apply(lambda row: [self.metadata.at[id, "app_name"] for id in row]), 
             "recommended_items": eval_data["recommendations"].apply(lambda row: [self.metadata.at[id, "app_name"] for id in row])}, index=eval_data.index)
+
+        if export_path:
+            new_data.to_csv(export_path)
         
         return new_data
 
