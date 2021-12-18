@@ -320,7 +320,7 @@ class ContentBasedRecommender(BaseRecommender):
 
 
 class ImprovedRecommender(ContentBasedRecommender):
-    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, reviews_path: str, sparse: bool = True, dim_red=None, tfidf='default', normalize:bool=False, columns:list=["specs", "publisher", "developer", "tags"], weighting_scheme={'playtime': False, 'sentiment': 'rating', 'reviews': True}) -> None:
+    def __init__(self, items_path: str, train_path: str, test_path: str, val_path: str, reviews_path: str, sparse: bool = True, dim_red=None, tfidf='default', normalize:bool=False, columns:list=["specs", "publisher", "developer", "tags"], weighting_scheme={}) -> None:
         """Improved content based recommender
 
         Args:
