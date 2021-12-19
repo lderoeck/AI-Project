@@ -1,4 +1,3 @@
-import os
 import re
 import warnings
 
@@ -25,8 +24,8 @@ class BaseRecommender(object):
         items = self._preprocess_items(pd.read_pickle(items_path))
         self.items, self.metadata = self._generate_item_features(items)
         self.train = self._preprocess_train(pd.read_parquet(train_path))
-        self.test = pd.read_parquet(test_path)
-        self.val = pd.read_parquet(val_path)
+        self.test = pd.read_parquet(test_path) if test_path else None
+        self.val = pd.read_parquet(val_path) if val_path else None
         self.recommendations = DataFrame()
         
     def _preprocess_items(self, items: DataFrame) -> DataFrame:
@@ -91,8 +90,8 @@ class BaseRecommender(object):
         Returns:
             DataFrame: Sanitised training data
         """
-        train["normalized_playtime_forever_sum"] = train.apply(lambda x: (np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)/np.sum(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1), axis=1)
-        train["normalized_playtime_forever_max"] = train.apply(lambda x: (np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1)/np.max(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 1), axis=1)
+        train["normalized_playtime_forever_sum"] = train.apply(lambda x: (np.log(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 2))/np.sum(np.log(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 2)), axis=1)
+        train["normalized_playtime_forever_max"] = train.apply(lambda x: (np.log(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 2))/np.max(np.log(np.array(x["playtime_forever"]) + np.array(x["playtime_2weeks"]) + 2)), axis=1)
         return train
     
     def set_user_data(self, train_path: str, test_path: str, val_path: str) -> None:
@@ -406,8 +405,7 @@ class ImprovedRecommender(ContentBasedRecommender):
             weights = None
             # if self.weighting_scheme and inventory_items.shape[0] >= 5:
             if self.weighting_scheme:
-                # min_threshold = 0.8
-                weight_info = pd.DataFrame({'playtime_weights': np.reciprocal((1+np.power(np.e, (-n_time_for_max*4)))).tolist(), 'weight': 1, 'feedback': False, 'sentiment': 1}, index=it_ids)
+                weight_info = pd.DataFrame({'playtime_weights': n_time_for_max.tolist(), 'weight': 1, 'feedback': False, 'sentiment': 1}, index=it_ids)
                 if self.weighting_scheme['sentiment'] in ['rating', 'mixed']:
                     weight_info['sentiment'] *= self.metadata.iloc[it_ids]['sentiment_rating']
                 if self.weighting_scheme['sentiment'] in ['n_reviews', 'mixed']:
