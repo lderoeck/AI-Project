@@ -19,7 +19,7 @@ def get_user_info(user):
     return xmltodict.parse(data)
 
 if __name__ == '__main__':
-    games = pd.read_pickle('./data/games.pkl')
+    games = pd.read_pickle('./data/all_games.pkl.xz')
     users = ['epiquesam', 'Vyolex']
     cols = ['item_id', 'playtime_forever', 'playtime_2weeks']
     all = pd.DataFrame(columns=cols)
