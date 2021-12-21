@@ -29,7 +29,7 @@ This dataset provides us with items (games), users and user-item interactions in
 First, make sure to install all necessary requirements by running `pip install -r requirements.txt`. All requirements are *hard* requirements, the code will not work without them.
 To run the code, the processed dataset should be generated with [clean_steam_dataset.ipynb](./src/data/clean_steam_dataset.ipynb). **NOTE:** this might not be the latest version, the latest version should be used from https://github.com/m4urin/autorec_project. Alternatively you can download the cleaned data from the same source.
 
-Once the cleaned data is present, two scripts need to be ran in order to prepare the data. First we need to unpack the data into its individual splits and generate the user_ids.
+Once the cleaned data is present in data folder, two scripts need to be ran in order to prepare the data. First we need to unpack the data into its individual splits and generate the user_ids.
 ```
 $ python convert_pkl_parquet.py interactions_splits.pkl
 ```
@@ -37,7 +37,7 @@ This will create all the required parquet files and user_ids, all this data shou
 ```
 $ python preprocess_reviews.py
 ```
-The generated reviews parquet file should be present in the data folder with all other files. 
+The generated reviews parquet file should be present in the data folder with all other files. Afterwards the user should move them to the corresponding submap (v2/v3) depending on which version of the data they processed.
 
 ## Base recommender
 Information about the base recommender can be viewed in the [readme](./deadline1/README.md) from deadline 1.
