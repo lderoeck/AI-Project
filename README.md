@@ -44,3 +44,5 @@ Information about the base recommender can be viewed in the [readme](./deadline1
 
 ## Improved recommender
 The improvements are discussed in more detail in the [visualisation notebook](./visualisation.ipynb).
+
+Additionally, qualitative results comparing the recommender with and without a weighting scheme are provided in the [qualitative evaluation notebook](./qualitative_evaluation.ipynb). Please note that `scrape_users.py` should be run in order to provide the required user info for the recommendations that are generated there.
